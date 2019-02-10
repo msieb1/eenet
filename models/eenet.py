@@ -108,7 +108,8 @@ class EENet(EmbeddingNet):
         self.Conv2d_6b_3x3 = BatchNormConv2d(100, 20, kernel_size=3, stride=1)
         self.Deconv1 = UpsampleConvLayer(100, 10, kernel_size=3, stride=1, upsample=2) #, output_padding=1)
         self.Deconv2 = UpsampleConvLayer(10, 5, kernel_size=3, stride=1, upsample=2) #, output_padding=1)
-        self.Deconv3 = UpsampleConvLayer(5, 2, kernel_size=3, stride=1, upsample=2) #, output_padding=1) # 2 channels for prediction of left and right ee finger tip
+        self.Deconv3_l = UpsampleConvLayer(5, 1, kernel_size=3, stride=1, upsample=2) #, output_padding=1) # 2 channels for prediction of left and right ee finger tip
+        self.Deconv3_r = UpsampleConvLayer(5, 1, kernel_size=3, stride=1, upsample=2) #, output_padding=1) # 2 channels for prediction of left and right ee finger tip
 
         # self.Deconv1 = nn.ConvTranspose2d(20, 1, kernel_size=3, stride=3) #, output_padding=1)
         # self.Deconv2 = nn.ConvTranspose2d(10, 1, kernel_size=3, stride=3) #, output_padding=1)
@@ -116,7 +117,7 @@ class EENet(EmbeddingNet):
         self.Dropout = nn.Dropout(p=0.3)
         self.Dropout2d = nn.Dropout2d(p=0.3)
         self.Softmax2D = SoftmaxLogProbability2D()
-        self.LogSoftmax = nn.LogSoftmax(dim=-1)
+        self.LogSoftmax = nn.LogSoftmax(dim=1)
         self.SpatialSoftmax = nn.Softmax2d()
         self.Softmax1d = nn.LogSoftmax()
         self.FullyConnected7a = Dense(23 * 23 * 20, img_height * img_width)
@@ -164,17 +165,28 @@ class EENet(EmbeddingNet):
 
         x = self.Deconv1(x)  
         x = self.Deconv2(x)
-        x = self.Deconv3(x)
-        x = F.interpolate(x, mode='nearest', size=(self.img_height, self.img_width))
-
+        x_l = self.Deconv3_l(x)
+        x_r = self.Deconv3_r(x)
+        x_l  = F.interpolate(x_l, mode='nearest', size=(self.img_height, self.img_width))
+        x_r  = F.interpolate(x_r, mode='nearest', size=(self.img_height, self.img_width))
         ### Flatten features into 1D to apply 1D Softmax, and then reshape back to image shape
-          
-        # x = self.Softmax2D(x)
-        x = x.view(x.size()[0], -1, 2) # 2 channels for each fingertip
-        # x = self.Dropout(x)
-        x = self.LogSoftmax(x)
-        x = x.view(x.size()[0], self.img_height, self.img_width, 2)
+         
+        # x = x.view(x.size()[0], -1, 2) # 2 channels for each fingertip
+        # # x = self.Dropout(x)
+        # x = self.LogSoftmax(x)
+        # x = x.view(x.size()[0], self.img_height, self.img_width, 2)
         
+        x_l = x_l.view(x_l.size()[0], -1) # 2 channels for each fingertip
+        # x_l = self.Dropout(x_l)
+        x_l = self.LogSoftmax(x_l)
+        x_l = x_l.view(x_l.size()[0], self.img_height, self.img_width)
+        
+        x_r = x_r.view(x_r.size()[0], -1) # 2 channels for each fingertip
+        # x_r = self.Dropout(x_r)
+        x_r = self.LogSoftmax(x_r)
+        x_r = x_r.view(x_r.size()[0], self.img_height, self.img_width)
+        x = torch.stack((x_l, x_r), -1)
+          
         ### Experimentation with real 2D softmax
         # x = self.Deconv2(x)
         # 31 x 31 x 20

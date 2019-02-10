@@ -56,10 +56,9 @@ def imshow_heatmap(img, pred, label):
 
     # img = img / 2 + 0.5     # unnormalize?
     plt.imshow(np.transpose(np.squeeze(img.astype(np.uint8)), (1, 2, 0)))
-    import ipdb; ipdb.set_trace()
 
-    plt.scatter(label[0][1], label[0][0], s=10, marker='s', c='r') # plot left fingertip
-    plt.scatter(label[1][1], label[1][0], s=10, marker='s', c='b') # plot right fingertip
+    plt.scatter(label[0][1], label[0][0], s=10, marker='^', c='r', alpha=0.7) # plot left fingertip
+    plt.scatter(label[1][1], label[1][0], s=10, marker='^', c='b', alpha=0.7) # plot right fingertip
 
 
     pred_l = pred[..., 0]
@@ -74,10 +73,12 @@ def imshow_heatmap(img, pred, label):
     plt.scatter(pred_label_l[1], pred_label_l[0], s=50, marker='.', c='r')
     plt.scatter(pred_label_r[1], pred_label_r[0], s=50, marker='.', c='b')
 
-    plt.imshow(np.squeeze(pred_l), cmap="YlGnBu", interpolation='bilinear', alpha=0.3)
-    plt.imshow(np.squeeze(pred_r), cmap="YlGnBu", interpolation='bilinear', alpha=0.3)
 
-def show_heatmap_of_samples(dataiter, model, use_cuda=True):
+    pred_combined_heatmap = pred_l + pred_r
+    pred_combined_heatmap /= np.abs(np.sum((pred_combined_heatmap)))
+    plt.imshow(np.squeeze(pred_combined_heatmap), cmap="YlGnBu", interpolation='bilinear', alpha=0.3)
+
+def show_heatmap_of_samples(samples, model, use_cuda=True):
     """Runs image through model and call imshow_heatmap to plot results
     
     Parameters
@@ -94,7 +95,7 @@ def show_heatmap_of_samples(dataiter, model, use_cuda=True):
     n_display = 8
     for i in range(n_display):
         plt.subplot(2, 4, i+1)
-        sample= dataiter.next()
+        sample = samples[i] # samples[np.random.choice[np.arange(len(samples), dtype=np.uint8)]]
         image = sample['image']
         label = sample['label']
         if use_cuda:
@@ -150,7 +151,7 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
     t_epochs = trange(epochs, desc='{}/{}'.format(0, epochs))
     num_batches_tr = len(loader_tr)
     num_batches_t = len(loader_t)
-    dataiter = iter(loader_t)
+    dataiter = list(iter(loader_t))
     for e in t_epochs:
         # Train
         loss_tr = 0
@@ -158,7 +159,7 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
         t_batches = tqdm(loader_tr, leave=False, desc='Train')
         # show heatmap of samples
         if (e % 3 == 0):
-            show_heatmap_of_samples(dataiter, model)
+            show_heatmap_of_samples(dataiter[:20], model)
         
         for sample in t_batches:
             xb = sample['image']
@@ -176,6 +177,7 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
             yb_flattened = yb.view(yb.size()[0], -1, 2)
             yb_l = yb_flattened[..., 0]
             yb_r = yb_flattened[..., 1]
+
 
             loss_l = criterion(pred_l, torch.max(yb_l, 1)[1])
             loss_r = criterion(pred_r, torch.max(yb_r, 1)[1])
@@ -270,7 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('-sf', '--load_data_and_labels_from_same_folder', action='store_true')
     args = parser.parse_args()
 
-    print('\n\n')
+    print('\n')
     logging.info('Make sure you provided the correct GPU visibility in line 24 depending on your system !')
     logging.info('Loading {}'.format(args.root_dir))
     logging.info('Processing Data')
