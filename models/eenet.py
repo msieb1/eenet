@@ -108,7 +108,7 @@ class EENet(EmbeddingNet):
         self.Conv2d_6b_3x3 = BatchNormConv2d(100, 20, kernel_size=3, stride=1)
         self.Deconv1 = UpsampleConvLayer(100, 10, kernel_size=3, stride=1, upsample=2) #, output_padding=1)
         self.Deconv2 = UpsampleConvLayer(10, 5, kernel_size=3, stride=1, upsample=2) #, output_padding=1)
-        self.Deconv3 = UpsampleConvLayer(5, 1, kernel_size=3, stride=1, upsample=2) #, output_padding=1)
+        self.Deconv3 = UpsampleConvLayer(5, 2, kernel_size=3, stride=1, upsample=2) #, output_padding=1) # 2 channels for prediction of left and right ee finger tip
 
         # self.Deconv1 = nn.ConvTranspose2d(20, 1, kernel_size=3, stride=3) #, output_padding=1)
         # self.Deconv2 = nn.ConvTranspose2d(10, 1, kernel_size=3, stride=3) #, output_padding=1)
@@ -116,7 +116,7 @@ class EENet(EmbeddingNet):
         self.Dropout = nn.Dropout(p=0.3)
         self.Dropout2d = nn.Dropout2d(p=0.3)
         self.Softmax2D = SoftmaxLogProbability2D()
-        self.LogSoftmax = nn.LogSoftmax()
+        self.LogSoftmax = nn.LogSoftmax(dim=-1)
         self.SpatialSoftmax = nn.Softmax2d()
         self.Softmax1d = nn.LogSoftmax()
         self.FullyConnected7a = Dense(23 * 23 * 20, img_height * img_width)
@@ -160,27 +160,29 @@ class EENet(EmbeddingNet):
         # 31 x 31 x 20
         # x = self.Conv2d_6b_3x3(x)
 
-        #### Bottleneck, now upsample (hourglass architecture similar to SE3Net)
+        ### Bottleneck, now upsample (hourglass architecture similar to SE3Net)
 
         x = self.Deconv1(x)  
         x = self.Deconv2(x)
         x = self.Deconv3(x)
         x = F.interpolate(x, mode='nearest', size=(self.img_height, self.img_width))
 
-        # x = nn.functional.interpolate(x, (self.img_height, self.img_width))
+        ### Flatten features into 1D to apply 1D Softmax, and then reshape back to image shape
+          
         # x = self.Softmax2D(x)
-        x = x.view(x.size()[0], -1)
-        x = self.Dropout(x)
+        x = x.view(x.size()[0], -1, 2) # 2 channels for each fingertip
+        # x = self.Dropout(x)
         x = self.LogSoftmax(x)
-        x = x.view(x.size()[0], self.img_height, self.img_width)
-        # print(x.shape)
+        x = x.view(x.size()[0], self.img_height, self.img_width, 2)
         
+        ### Experimentation with real 2D softmax
         # x = self.Deconv2(x)
         # 31 x 31 x 20
         # x = self.SpatialSoftmax(x)
 
         # width * height
         # x = self.FullyConnected7a(x.view(x.size()[0], -1))
+
         # Probabilistic softmax output
         # x = self.Softmax1d(x)
         # x = x.view(x.size()[0], self.img_height, self.img_width)
@@ -188,4 +190,21 @@ class EENet(EmbeddingNet):
         return x
 
 def define_model(img_height, img_width, pretrained=True):
+    """Model loading wrapper
+    
+    Parameters
+    ----------
+    img_height : int
+        image height
+    img_width : int
+        image width
+    pretrained : bool, optional
+        Use conv layers with pretrained weights of ImageNet (the default is True, which loads pretrained weights)
+    
+    Returns
+    -------
+    torch.nn.Module
+        loads model
+    """
+
     return EENet(img_height, img_width, models.inception_v3(pretrained=pretrained))

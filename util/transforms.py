@@ -17,7 +17,7 @@ class Rescale(object):
         self.output_size = output_size
 
     def __call__(self, sample):
-        image, landmarks = sample['image'], sample['label']
+        image, labels = sample['image'], sample['label']
         h, w = image.shape[:2]
         if isinstance(self.output_size, int):
             if h > w:
@@ -31,14 +31,18 @@ class Rescale(object):
 
         # h and w are swapped for landmarks because for images,
         # x and y axes are axis 1 and 0 respectively
-        #import ipdb; ipdb.set_trace()
-        points = list(np.where(landmarks == 1))
-        points[0] = np.array(points[0] * new_h / h, dtype=np.int32)
-        points[1] = np.array(points[1] * new_w / w, dtype=np.int32)
-        landmarks = np.zeros((img.shape[0], img.shape[1]))
-
-        landmarks[tuple(points)] = 1
-        return {'image': img, 'label': landmarks}
+        
+        tsfm_labels = np.zeros((img.shape[0], img.shape[1], 2))
+        for i in range(labels.shape[-1]):
+            landmarks = labels[..., i]
+            points = list(np.where(landmarks == 1))
+            points[0] = np.array(points[0] * new_h / h, dtype=np.int32)
+            points[1] = np.array(points[1] * new_w / w, dtype=np.int32)
+            try:
+                tsfm_labels[tuple(points), i] = 1
+            except:
+                import ipdb; ipdb.set_trace()
+        return {'image': img, 'label': tsfm_labels}
 
 
 class RandomCrop(object):
@@ -58,7 +62,7 @@ class RandomCrop(object):
             self.output_size = output_size
 
     def __call__(self, sample):
-        image, landmarks = sample['image'], sample['label']
+        image, labels = sample['image'], sample['label']
 
         h, w = image.shape[:2]
         new_h, new_w = self.output_size
@@ -68,14 +72,16 @@ class RandomCrop(object):
 
         image = image[top: top + new_h,
                       left: left + new_w]
+        
+        tsfm_labels = np.zeros((image.shape[0], image.shape[1], 2))
+        for i in range(labels.shape[-1]):
+            landmarks = labels[..., i]
+            points = list(np.where(landmarks == 1))
+            points[0] = np.array(points[0] - top, dtype=np.int32)
+            points[1] = np.array(points[1] - left, dtype=np.int32)
+            tsfm_labels[tuple(points), i] = 1
 
-        points = list(np.where(landmarks == 1))
-        points[0] = np.array(points[0] - top, dtype=np.int32)
-        points[1] = np.array(points[1] - left, dtype=np.int32)
-        landmarks = np.zeros((image.shape[0], image.shape[1]))
-        landmarks[tuple(points)] = 1
-
-        return {'image': image, 'label': landmarks}
+        return {'image': image, 'label': tsfm_labels}
 
 
 class ToTensor(object):

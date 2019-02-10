@@ -54,15 +54,28 @@ def imshow_heatmap(img, pred, label):
     
     """
 
-    # img = img / 2 + 0.5     # unnormalize
+    # img = img / 2 + 0.5     # unnormalize?
     plt.imshow(np.transpose(np.squeeze(img.astype(np.uint8)), (1, 2, 0)))
-    # plt.scatter(pred[0], pred[1], s=10, marker='.', c='r')
-    plt.scatter(label[1], label[0], s=50, marker='.', c='r')
-    pred /= np.abs(np.sum(np.exp(pred)))
-    pred_label = np.where(pred >= np.max(pred))[1:]
+    import ipdb; ipdb.set_trace()
 
-    plt.scatter(pred_label[1], pred_label[0], s=50, marker='.', c='b')
-    plt.imshow(np.squeeze(pred), cmap="YlGnBu", interpolation='bilinear', alpha=0.4)
+    plt.scatter(label[0][1], label[0][0], s=50, marker='s', c='r') # plot left fingertip
+    plt.scatter(label[1][1], label[1][0], s=50, marker='s', c='b') # plot right fingertip
+
+
+    pred_l = pred[..., 0]
+    pred_r = pred[..., 1]
+
+    pred_l /= np.abs(np.sum(np.exp(pred_l)))
+    pred_r /= np.abs(np.sum(np.exp(pred_r)))
+
+    pred_label_l = np.where(pred_l >= np.max(pred_l))[1:]
+    pred_label_r = np.where(pred_r >= np.max(pred_r))[1:]
+
+    plt.scatter(pred_label_l[1], pred_label_l[0], s=50, marker='.', c='r')
+    plt.scatter(pred_label_r[1], pred_label_r[0], s=50, marker='.', c='b')
+
+    plt.imshow(np.squeeze(pred_l), cmap="YlGnBu", interpolation='bilinear', alpha=0.3)
+    plt.imshow(np.squeeze(pred_r), cmap="YlGnBu", interpolation='bilinear', alpha=0.3)
 
 def show_heatmap_of_samples(dataiter, model, use_cuda=True):
     """Runs image through model and call imshow_heatmap to plot results
@@ -87,8 +100,11 @@ def show_heatmap_of_samples(dataiter, model, use_cuda=True):
         if use_cuda:
             image = image.cuda()
             label = label.cuda()
-        buf = np.where(label.cpu().numpy() ==1)[1:]
-        label = (buf[0][0], buf[1][0])
+        import ipdb; ipdb.set_trace()
+        buf_l = np.where(label[..., 0].cpu().numpy() ==1)[1:]
+        buf_r = np.where(label[..., 1].cpu().numpy() ==1)[1:]
+        label = [(buf_l[0][0], buf_l[1][0]), (buf_r[0][0], buf_r[1][0])]
+
         model.eval()
         pred = model(image.cuda())
         model.train()
@@ -152,9 +168,19 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
                 xb = xb.cuda()
                 yb = yb.cuda()
             opt.zero_grad()
-            pred = model(xb)
 
-            loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
+            pred = model(xb)
+            pred_flattened = pred.view(pred.size()[0], -1, 2)
+            pred_l = pred_flattened[..., 0]
+            pred_r = pred_flattened[..., 1]
+
+            yb_flattened = yb.view(yb.size()[0], -1, 2)
+            yb_l = yb_flattened[..., 0]
+            yb_r = yb_flattened[..., 1]
+
+            loss_l = criterion(pred_l, torch.max(yb_l, 1)[1])
+            loss_r = criterion(pred_r, torch.max(yb_r, 1)[1])
+            loss = loss_l + loss_r
             # loss = criterion(pred, torch.max(yb.view(yb.size()[0], -1), 1)[1])
 
             # acc = compute_acc(labels_pred, yb)
@@ -245,6 +271,7 @@ if __name__ == '__main__':
     parser.add_argument('-sf', '--load_data_and_labels_from_same_folder', action='store_true')
     args = parser.parse_args()
 
+    print('\n\n')
     logging.info('Make sure you provided the correct GPU visibility in line 24 depending on your system !')
     logging.info('Loading {}'.format(args.root_dir))
     logging.info('Processing Data')

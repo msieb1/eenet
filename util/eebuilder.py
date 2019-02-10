@@ -82,7 +82,7 @@ class EndEffectorPositionDataset(Dataset):
         Returns
         -------
         dict
-            Returns a datasample dict containing the keys 'image' and 'label'
+            Returns a datasample dict containing the keys 'image' and 'label', where label has the same dimension as 'image', but 2 channels, one for each finger tip
         """
 
         if not self.load_data_and_labels_from_same_folder:
@@ -92,7 +92,7 @@ class EndEffectorPositionDataset(Dataset):
             if image.shape[-1] == 4:
                 image = image[:, :, :-1]
             #image = np.transpose(image, (2, 0, 1)) # check whether correct transpose (channels first vs channels last)
-            label = np.load(join(self.root_dir, 'labels', '{0:06d}.npy'.format(idx)))[:2] # only x and y needed
+            label = np.load(join(self.root_dir, 'labels', '{0:06d}.npy'.format(idx)))[..., :2] # only x and y needed
             label = np.round(label).astype(np.int32)
         else:
             img_name = join(self.root_dir,
@@ -102,16 +102,20 @@ class EndEffectorPositionDataset(Dataset):
                 image = image[:, :, :-1]
             #image = np.transpose(image, (2, 0, 1)).astype(np.float32)
             label = np.load(join(self.root_dir, 
-                                '{0:06d}.npy'.format(idx)))[:2] # only x and y needed
+                                '{0:06d}.npy'.format(idx)))[..., :2] # only x and y needed
             label = np.round(label).astype(np.int32)            
-        label = label[0] # for now just use left ee tip
-        buff = np.zeros((image.shape[0], image.shape[1]), dtype=np.int64)
-        buff[label[1], label[0]] = 1
+            
+        label_l = label[0] # left ee tip
+        label_r = label[1] # right ee tip
+        buff = np.zeros((image.shape[0], image.shape[1], 2), dtype=np.int64)
+        buff[label_l[1], label_l[0], 0] = 1
+        buff[label_r[1], label_r[0], 1] = 1
 
         label = buff
         image = skimage.img_as_float32(image)
         sample = {'image': image, 'label': label}
-        #import ipdb; ipdb.set_trace()
+
+        # Transform image if provided
         if self.transform:
             sample = self.transform(sample)
         return sample
