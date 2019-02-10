@@ -8,6 +8,9 @@ from copy import deepcopy as copy
 
 
 class SoftmaxLogProbability2D(torch.nn.Module):
+    """Implements Softmax2D Layer
+    """
+
     def __init__(self):
         super(SoftmaxLogProbability2D, self).__init__()
 
@@ -76,6 +79,10 @@ class EmbeddingNet(nn.Module):
         return output
 
 class EENet(EmbeddingNet):
+    """Predicts Heatmap of where left and right finger tip of end effector are located
+
+    """
+
     def __init__(self, img_height, img_width, inception):  
         super(EENet, self).__init__()
         self.transform_input = True
@@ -152,6 +159,8 @@ class EENet(EmbeddingNet):
         x = self.Dropout2d(x)
         # 31 x 31 x 20
         # x = self.Conv2d_6b_3x3(x)
+
+        #### Bottleneck, now upsample (hourglass architecture similar to SE3Net)
 
         x = self.Deconv1(x)  
         x = self.Deconv2(x)

@@ -20,42 +20,40 @@ from util.eebuilder import EndEffectorPositionDataset
 from util.transforms import Rescale, RandomCrop, ToTensor 
 from torchsample.transforms.affine_transforms import Rotate
 
+### Set GPU visibility
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-# os.environ["CUDA_VISIBLE_DEVICES"]= "1, 2"
+# os.environ["CUDA_VISIBLE_DEVICES"]= "1, 2"  # Set this for adequate GPU usage
 
+### Set Global Parameters
 _LOSS = nn.NLLLoss
 ROOT_DIR = '/home/msieb/projects/bullet-demonstrations/experiments/reach/data'
-IMG_HEIGHT = 240 
+IMG_HEIGHT = 240 # These are the dimensions used as input for the ConvNet architecture, so these are independent of actual image size
 IMG_WIDTH = 320
-# plt.ion()
 
-def compute_acc(labels_pred, y):
-    N = len(labels_pred)
-    corrects = labels_pred * y
-    acc = torch.sum(corrects) / 2 / N
-    return get_nu(acc)
-
+### Helper functions
 def apply(func, M):
-     tList = [func(m) for m in torch.unbind(M, dim=0) ]
-     res = torch.stack(tList, dim=0)
-     return res
+    """Applies a function over a batch (PyTorch as of now has no support for arbitrary function calls on batches)
+    """
+
+    tList = [func(m) for m in torch.unbind(M, dim=0) ]
+    res = torch.stack(tList, dim=0)
+    return res
 
 
-def forward_results(x, y, model):
-    preds = model(x)
-    labels_pred = labels_from_preds(preds)
+def imshow_heatmap(img, pred, label):
+    """Displays the a prediction heatmap, the max of the heatmap, and the ground truth label
+    
+    Parameters
+    ----------
+    img : array (height, width, 3)
+        Raw input RGB image
+    pred : array (height, width, 1)
+        heatmap over image in logits (unnormalized probabilities)
+    label : (2, x, y)
+        Ground truth finger tip locations
+    
+    """
 
-    criterion = _LOSS()
-    loss = get_numpy(criterion(preds, y))
-    acc = compute_acc(labels_pred, y)
-
-    return loss, acc, preds, labels_pred
-
-def get_input_optimizer(action):
-    optimizer = optim.Adam([action.requires_grad_()], lr=0.01)
-    return optimizer
-
-def imshow(img, pred, label):
     # img = img / 2 + 0.5     # unnormalize
     plt.imshow(np.transpose(np.squeeze(img.astype(np.uint8)), (1, 2, 0)))
     # plt.scatter(pred[0], pred[1], s=10, marker='.', c='r')
@@ -67,6 +65,19 @@ def imshow(img, pred, label):
     plt.imshow(np.squeeze(pred), cmap="YlGnBu", interpolation='bilinear', alpha=0.4)
 
 def show_heatmap_of_samples(dataiter, model, use_cuda=True):
+    """Runs image through model and call imshow_heatmap to plot results
+    
+    Parameters
+    ----------
+    dataiter : dataloader as iterator
+        Used to obtain some test samples to plot
+    model : torch.nn.Module
+        neural network model
+    use_cuda : bool, optional
+        whether or not to use GPU (the default is True, which uses GPU)
+    
+    """
+
     n_display = 8
     for i in range(n_display):
         plt.subplot(2, 4, i+1)
@@ -81,11 +92,34 @@ def show_heatmap_of_samples(dataiter, model, use_cuda=True):
         model.eval()
         pred = model(image.cuda())
         model.train()
-        imshow(skimage.img_as_ubyte(image.cpu().detach().numpy()), pred.cpu().detach().numpy(), label)
+        imshow_heatmap(skimage.img_as_ubyte(image.cpu().detach().numpy()), pred.cpu().detach().numpy(), label)
     plt.show()
 
 
 def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
+    """Train model and shows sample results
+    
+    Parameters
+    ----------
+    model : torch.nn.Module
+        neural network
+    loader_tr : Training Dataloader
+        Loads training data (images and labels)
+    loader_t : Test Dataloader
+        Loads test data (images and labels)
+    lr : float optional
+        Optimizer learning rate (the default is 1e-4)
+    epochs : int, optional
+        number of training epochs (the default is 1000)
+    use_cuda : bool, optional
+        whether or not to use GPU (the default is True, which uses GPU)
+    
+    Returns
+    -------
+    dictionary of training statistics
+        contains metrics such as loss and accuracy
+    """
+
     logs = {
         'loss': {
             'tr': [],
@@ -120,19 +154,9 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
             opt.zero_grad()
             pred = model(xb)
 
-            # t1 = torch.zeros(10, 10).view(1, -1).float()
-            # t1[0, 5] = 1
-            # t1 = torch.nn.LogSoftmax()(t1)
-            # t2 = torch.Tensor([5]).long()
-            # import ipdb; ipdb.set_trace()   
-            # loss = criterion(t1, t2)
-
-
-            # import ipdb; ipdb.set_trace();
             loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
             # loss = criterion(pred, torch.max(yb.view(yb.size()[0], -1), 1)[1])
 
-            # labels_pred = labels_from_preds(pred)
             # acc = compute_acc(labels_pred, yb)
             loss_tr += loss
             # acc_tr += acc
@@ -147,11 +171,10 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
         loss_tr /= num_batches_tr
         acc_tr /= num_batches_tr
 
+        ## TODO implement validation
         # Eval on test
         loss_t = 0
         acc_t = 0
-
-        
         # for xb, yb in tqdm(loader_t, leave=False, desc='Eval'):
         #     if use_cuda:
         #         xb = xb.cuda()
@@ -159,9 +182,9 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
         #     pred = model(xb)
         #     loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
         #     loss_t += loss
-            # acc_t += acc
-        loss_t /= num_batches_t
-        acc_t /= num_batches_t
+        #     acc_t += acc
+        # loss_t /= num_batches_t
+        # acc_t /= num_batches_t
         
         t_epochs.set_description('{}/{} | Tr {:.2f}, {:.2f}. T {:.2f}, {:.2f}'.format(e, epochs, loss_tr, acc_tr, loss_t, acc_t))
         t_epochs.update()
@@ -173,10 +196,24 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
         logs['loss']['t'].append(loss_t)
         logs['acc']['t'].append(acc_t)
         print('-'*10)
-
     return logs
 
 def create_model(args, use_cuda=True):
+    """Creates neural network model, loading from checkpoint of provided
+    
+    Parameters
+    ----------
+    args : variable function arguments
+        see parser in main for details
+    use_cuda : bool, optional
+        whether or not to use GPU (the default is True, which uses GPU)
+    
+    Returns
+    -------
+    torch.nn.Module
+        contains EENet model
+    """
+
     model = define_model(IMG_HEIGHT, IMG_WIDTH, use_cuda)
     # tcn = PosNet()
     if args.load_model:
@@ -191,6 +228,10 @@ def create_model(args, use_cuda=True):
     return model
 
 if __name__ == '__main__':
+    """Parses arguments, creates dataloaders for training and test data, sets up model and logger, and trains network
+    """
+
+    ### Setting up parser, logger and GPU params
     set_gpu_mode(True)
     logging.getLogger().setLevel(logging.INFO)
     parser = argparse.ArgumentParser()
@@ -202,29 +243,32 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, default='')
     parser.add_argument('--root_dir', type=str, default=ROOT_DIR)
     parser.add_argument('-sf', '--load_data_and_labels_from_same_folder', action='store_true')
-
     args = parser.parse_args()
 
+    logging.info('Make sure you provided the correct GPU visibility in line 24 depending on your system !')
     logging.info('Loading {}'.format(args.root_dir))
     logging.info('Processing Data')
-    ## DEBUG
-    dataset2 = EndEffectorPositionDataset(root_dir=args.root_dir, 
-                                        load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
     
-    sample = dataset2[0]
-    image = sample['image']
-    st()
-    tsfm = np.transpose(Rotate(30)(torch.Tensor(np.transpose(image, (2, 0, 1)))).numpy(), (1, 2, 0))
-    plt.imshow(tsfm)
-    plt.show()
-    ##
+    ## DEBUG Rotate transform
+    # dataset2 = EndEffectorPositionDataset(root_dir=args.root_dir, 
+    #                                     load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
+    
+    # sample = dataset2[0]
+    # image = sample['image']
+    # tsfm = np.transpose(Rotate(30)(torch.Tensor(np.transpose(image, (2, 0, 1)))).numpy(), (1, 2, 0))
+    # plt.imshow(tsfm)
+    # plt.show()
+    #####
+
+    ### Create dataset
     dataset = EndEffectorPositionDataset(root_dir=args.root_dir, 
                                         transform=transforms.Compose(
                                             [
-                                            Rescale((240, 320)),
+                                            Rescale((IMG_HEIGHT, IMG_WIDTH)),
                                             ToTensor()
                                             ]),                                        
                                         load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
+    # Split dataset in training and test set
     n = len(dataset)
     n_test = int( n * .2 )  # number of test/val elements
     n_train = n - 2 * n_test
@@ -233,15 +277,16 @@ if __name__ == '__main__':
                         shuffle=True, num_workers=4)
     loader_t = DataLoader(dataset_t, batch_size=1, shuffle=True)                       
     
-    logging.info('Training.')
-
-    # TODO
+    ### Load model
     model = create_model(args)
-    # model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
+    # model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count())) # Parallize model if multiple GPUs are available
+
+    ### Train
+    logging.info('Training.')
     logs = train(model, loader_tr, loader_t, lr=args.learning_rate, epochs=args.epochs)
     # TODO save stuff
 
-    import IPython
-    IPython.embed()
+    # Default into debug mode if training is completed
+    import ipdb; ipdb.set_trace()
     exit()
 

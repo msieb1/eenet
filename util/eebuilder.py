@@ -1,4 +1,5 @@
 from __future__ import print_function, division
+
 import os
 from os.path import join
 import numpy as np
@@ -14,44 +15,83 @@ from torchvision import transforms, utils
 # Ignore warnings
 import warnings
 warnings.filterwarnings("ignore")
-
 # plt.ion()   # interactive mode
 
 def show_position(image, label):
-    """Show image with landmarks"""
+    """Shows sample image with ground truth label
+    
+    Parameters
+    ----------
+    image : array (height, width, 3)
+        RGB image
+    label : (2, x, y)
+        ground truth x, y location of left and right fingertip (label)
+    
+    """
+
     plt.imshow(image)
     plt.scatter(label[0], label[1], s=10, marker='.', c='r')
     plt.pause(0.001)  # pause a bit so that plots are updated
 
 
 class EndEffectorPositionDataset(Dataset):
-    """Face Landmarks dataset."""
+    """End effector finger tip dataset."""
 
     def __init__(self, root_dir, transform=None, load_data_and_labels_from_same_folder=False, use_cuda=True):
+        """Initializes dataset
+        
+        Parameters
+        ----------
+        root_dir : str
+            path to raw data
+        transform : list, optional
+            list of transforms (check torchsample subfolder for all available transforms, or use official torch.transforms library) (the default is None, which does not load any transforms)
+        load_data_and_labels_from_same_folder : bool, optional
+            checks whether separate folders for images and labels exist, or whether both are in same folder (the default is False, which assumes a separate 'images' and 'labels' folder exist in root_dir) 
+        use_cuda : bool, optional
+            whether or not to use GPU (the default is True, which uses GPU)
+        
         """
-        Args:
-            root_dir (string): Directory with all the images.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
+
         self.root_dir = root_dir
         self.transform = transform
         self.load_data_and_labels_from_same_folder = load_data_and_labels_from_same_folder
 
     def __len__(self):
+        """Computes length of dataset (number of overall samples)
+        
+        Returns
+        -------
+        int 
+            number of all samples in dataset
+        """
+
         if not self.load_data_and_labels_from_same_folder:
             return len(os.listdir(join(self.root_dir, 'images')))
         else:
             return len([f for f in os.listdir(self.root_dir) if f.endswith('.png') or f.endswith('.jpg')])
     
     def __getitem__(self, idx):
+        """Loads an item from the dataset
+        
+        Parameters
+        ----------
+        idx : int
+            index of current sample
+        
+        Returns
+        -------
+        dict
+            Returns a datasample dict containing the keys 'image' and 'label'
+        """
+
         if not self.load_data_and_labels_from_same_folder:
             img_name = join(self.root_dir,
                                     'images', '{0:06d}.png'.format(idx))
             image = io.imread(img_name)
             if image.shape[-1] == 4:
                 image = image[:, :, :-1]
-            #image = np.transpose(image, (2, 0, 1))
+            #image = np.transpose(image, (2, 0, 1)) # check whether correct transpose (channels first vs channels last)
             label = np.load(join(self.root_dir, 'labels', '{0:06d}.npy'.format(idx)))[:2] # only x and y needed
             label = np.round(label).astype(np.int32)
         else:
@@ -67,6 +107,7 @@ class EndEffectorPositionDataset(Dataset):
         label = label[0] # for now just use left ee tip
         buff = np.zeros((image.shape[0], image.shape[1]), dtype=np.int64)
         buff[label[1], label[0]] = 1
+
         label = buff
         image = skimage.img_as_float32(image)
         sample = {'image': image, 'label': label}
@@ -74,24 +115,3 @@ class EndEffectorPositionDataset(Dataset):
         if self.transform:
             sample = self.transform(sample)
         return sample
-
-
-
-# ee_dataset = EndEffectorPositionDataset(root_dir='/home/msieb/projects/bullet-demonstrations/experiments/reach/data')
-
-# fig = plt.figure()
-
-# for i in range(len(ee_dataset)):
-#     sample = ee_dataset[i]
-
-#     print(i, sample['image'].shape, sample['label'].shape)
-
-#     ax = plt.subplot(1, 4, i + 1)
-#     plt.tight_layout()
-#     ax.set_title('Sample #{}'.format(i))
-#     ax.axis('off')
-#     show_position(**sample)
-
-#     if i == 3:
-#         plt.show()
-#         break

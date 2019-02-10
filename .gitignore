@@ -103,3 +103,6 @@ data/
 
 #venv
 .venv
+
+#vs code
+.vscode
