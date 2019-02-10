@@ -58,8 +58,8 @@ def imshow_heatmap(img, pred, label):
     plt.imshow(np.transpose(np.squeeze(img.astype(np.uint8)), (1, 2, 0)))
     import ipdb; ipdb.set_trace()
 
-    plt.scatter(label[0][1], label[0][0], s=50, marker='s', c='r') # plot left fingertip
-    plt.scatter(label[1][1], label[1][0], s=50, marker='s', c='b') # plot right fingertip
+    plt.scatter(label[0][1], label[0][0], s=10, marker='s', c='r') # plot left fingertip
+    plt.scatter(label[1][1], label[1][0], s=10, marker='s', c='b') # plot right fingertip
 
 
     pred_l = pred[..., 0]
@@ -100,7 +100,6 @@ def show_heatmap_of_samples(dataiter, model, use_cuda=True):
         if use_cuda:
             image = image.cuda()
             label = label.cuda()
-        import ipdb; ipdb.set_trace()
         buf_l = np.where(label[..., 0].cpu().numpy() ==1)[1:]
         buf_r = np.where(label[..., 1].cpu().numpy() ==1)[1:]
         label = [(buf_l[0][0], buf_l[1][0]), (buf_r[0][0], buf_r[1][0])]

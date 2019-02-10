@@ -38,8 +38,11 @@ class Rescale(object):
             points = list(np.where(landmarks == 1))
             points[0] = np.array(points[0] * new_h / h, dtype=np.int32)
             points[1] = np.array(points[1] * new_w / w, dtype=np.int32)
+            buff = np.zeros((img.shape[0], img.shape[1]))
+            
             try:
-                tsfm_labels[tuple(points), i] = 1
+                buff[tuple(points)] = 1
+                tsfm_labels[..., i] = buff
             except:
                 import ipdb; ipdb.set_trace()
         return {'image': img, 'label': tsfm_labels}
