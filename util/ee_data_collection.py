@@ -393,8 +393,19 @@ def collect_n_pictures_parallel(device_ids, num_pics):
         p3d_l = finger_listener.get_3d_pose(gripper='l', finger='l', frame="/camera{}_color_optical_frame".format(device_ids[view_idx]))
         p3d_r = finger_listener.get_3d_pose(gripper='l', finger='r', frame="/camera{}_color_optical_frame".format(device_ids[view_idx]))
         
+
+        ### DEBUG
+
+        p2d_query = np.array([572, 289])
+        depth_z = depth_image[289, 572] * depth_scale
+        p3d_deprojected = deproject_pixel_to_point(p2d_query, depth_z, INTRIN)
+
+        ###
+
         p2d_l = project_point_to_pixel(p3d_l, INTRIN)
         p2d_r = project_point_to_pixel(p3d_r, INTRIN)
+        import pdb; pdb.set_trace()
+
         pixels[0, :-1] = p2d_l
         pixels[0, -1] = p3d_l[-1]
         pixels[1, :-1] = p2d_r

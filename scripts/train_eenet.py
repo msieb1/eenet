@@ -18,8 +18,7 @@ from models.eenet import define_model
 from util.utils import weight_init, set_gpu_mode, zeros, get_numpy
 from util.eebuilder import EndEffectorPositionDataset
 from util.transforms import Rescale, RandomCrop, ToTensor 
-from torchsample.transforms.affine_transforms import Rotate
-
+from torchsample.transforms.affine_transforms import Rotate, RotateWithLabel
 ### Set GPU visibility
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"]= "1, 2"  # Set this for adequate GPU usage
@@ -278,14 +277,15 @@ if __name__ == '__main__':
     logging.info('Processing Data')
     
     ## DEBUG Rotate transform
-    # dataset2 = EndEffectorPositionDataset(root_dir=args.root_dir, 
-    #                                     load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
+    #dataset2 = EndEffectorPositionDataset(root_dir=args.root_dir, 
+                                  #       load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
     
-    # sample = dataset2[0]
-    # image = sample['image']
-    # tsfm = np.transpose(Rotate(30)(torch.Tensor(np.transpose(image, (2, 0, 1)))).numpy(), (1, 2, 0))
-    # plt.imshow(tsfm)
-    # plt.show()
+    #sample = dataset2[0]
+    #image = sample['image']
+    #input = torch.Tensor(np.transpose(image, (2, 0, 1))).numpy()   
+    #tsfm = np.transpose(RotateWithLabel(30)(input), (1, 2, 0))
+    #plt.imshow(tsfm)
+    #plt.show()
     #####
 
     ### Create dataset
@@ -293,7 +293,8 @@ if __name__ == '__main__':
                                         transform=transforms.Compose(
                                             [
                                             Rescale((IMG_HEIGHT, IMG_WIDTH)),
-                                            ToTensor()
+                                            ToTensor(),
+                                            RotateWithLabel(30)
                                             ]),                                        
                                         load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
     # Split dataset in training and test set
