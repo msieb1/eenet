@@ -97,5 +97,6 @@ class ToTensor(object):
         # numpy image: H x W x C
         # torch image: C X H X W
         image = image.transpose((2, 0, 1))
+        landmarks = landmarks.transpose((2, 0, 1))
         return {'image': torch.from_numpy(image).float(),
-                'label': torch.from_numpy(landmarks)}
+                'label': torch.from_numpy(landmarks).float()}

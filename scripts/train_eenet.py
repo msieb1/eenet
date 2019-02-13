@@ -18,7 +18,9 @@ from models.eenet import define_model
 from util.utils import weight_init, set_gpu_mode, zeros, get_numpy
 from util.eebuilder import EndEffectorPositionDataset
 from util.transforms import Rescale, RandomCrop, ToTensor 
-from torchsample.transforms.affine_transforms import Rotate, RotateWithLabel
+from torchsample.transforms.affine_transforms import Rotate, RotateWithLabel, RandomChoiceRotateWithLabel
+
+from pdb import set_trace as st
 ### Set GPU visibility
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"]= "1, 2"  # Set this for adequate GPU usage
@@ -100,8 +102,8 @@ def show_heatmap_of_samples(samples, model, use_cuda=True):
         if use_cuda:
             image = image.cuda()
             label = label.cuda()
-        buf_l = np.where(label[..., 0].cpu().numpy() ==1)[1:]
-        buf_r = np.where(label[..., 1].cpu().numpy() ==1)[1:]
+        buf_l = np.where(label[:, 0, ...].cpu().numpy() ==1)[1:]
+        buf_r = np.where(label[:, 1, ...].cpu().numpy() ==1)[1:]
         label = [(buf_l[0][0], buf_l[1][0]), (buf_r[0][0], buf_r[1][0])]
 
         model.eval()
@@ -157,7 +159,7 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
         acc_tr = 0
         t_batches = tqdm(loader_tr, leave=False, desc='Train')
         # show heatmap of samples
-        if (e % 3 == 0):
+        if (e % 6 == 0):
             show_heatmap_of_samples(dataiter[:20], model)
         
         for sample in t_batches:
@@ -173,9 +175,9 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
             pred_l = pred_flattened[..., 0]
             pred_r = pred_flattened[..., 1]
 
-            yb_flattened = yb.view(yb.size()[0], -1, 2)
-            yb_l = yb_flattened[..., 0]
-            yb_r = yb_flattened[..., 1]
+            yb_flattened = yb.view(yb.size()[0], 2, -1)
+            yb_l = yb_flattened[:, 0 ,...]
+            yb_r = yb_flattened[:, 1 ,...]
 
 
             loss_l = criterion(pred_l, torch.max(yb_l, 1)[1])
@@ -276,25 +278,13 @@ if __name__ == '__main__':
     logging.info('Loading {}'.format(args.root_dir))
     logging.info('Processing Data')
     
-    ## DEBUG Rotate transform
-    #dataset2 = EndEffectorPositionDataset(root_dir=args.root_dir, 
-                                  #       load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
-    
-    #sample = dataset2[0]
-    #image = sample['image']
-    #input = torch.Tensor(np.transpose(image, (2, 0, 1))).numpy()   
-    #tsfm = np.transpose(RotateWithLabel(30)(input), (1, 2, 0))
-    #plt.imshow(tsfm)
-    #plt.show()
-    #####
-
     ### Create dataset
     dataset = EndEffectorPositionDataset(root_dir=args.root_dir, 
                                         transform=transforms.Compose(
                                             [
                                             Rescale((IMG_HEIGHT, IMG_WIDTH)),
                                             ToTensor(),
-                                            RotateWithLabel(30)
+                                            #RandomChoiceRotateWithLabel([0,  177,179,180])
                                             ]),                                        
                                         load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
     # Split dataset in training and test set

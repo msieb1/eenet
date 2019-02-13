@@ -6,6 +6,7 @@ from torch.autograd import Function
 import torchvision.models as models
 from copy import deepcopy as copy
 
+from pdb import set_trace as st
 
 class SoftmaxLogProbability2D(torch.nn.Module):
     """Implements Softmax2D Layer
@@ -175,7 +176,6 @@ class EENet(EmbeddingNet):
         # # x = self.Dropout(x)
         # x = self.LogSoftmax(x)
         # x = x.view(x.size()[0], self.img_height, self.img_width, 2)
-        
         x_l = x_l.view(x_l.size()[0], -1) # 2 channels for each fingertip
         # x_l = self.Dropout(x_l)
         x_l = self.LogSoftmax(x_l)

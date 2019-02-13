@@ -8,7 +8,7 @@ import random
 import torch as th
 
 from ..utils import th_affine2d, th_random_choice
-
+from pdb import set_trace as st
 
 class RandomAffine(object):
 
@@ -221,6 +221,43 @@ class RandomRotate(object):
                              interp=self.interp)(*inputs)
             return outputs
 
+class RandomRotateWithLabel(object):
+
+    def __init__(self, 
+                 rotation_range,
+                 interp='bilinear',
+                 lazy=False):
+        """
+        Randomly rotate an image between (-degrees, degrees). If the image
+        has multiple channels, the same rotation will be applied to each channel.
+
+        Arguments
+        ---------
+        rotation_range : integer or float
+            image will be rotated between (-degrees, degrees) degrees
+
+        interp : string in {'bilinear', 'nearest'} or list of strings
+            type of interpolation to use. You can provide a different
+            type of interpolation for each input, e.g. if you have two
+            inputs then you can say `interp=['bilinear','nearest']
+
+        lazy    : boolean
+            if true, only create the affine transform matrix and return that
+            if false, perform the transform on the tensor and return the tensor
+        """
+        self.rotation_range = rotation_range
+        self.interp = interp
+        self.lazy = lazy
+
+    def __call__(self, sample):
+        degree = random.uniform(-self.rotation_range, self.rotation_range)
+
+        if self.lazy:
+            return RotateWithLabel(degree, lazy=True)(sample[0])
+        else:
+            outputs = RotateWithLabel(degree,
+                             interp=self.interp)(sample)
+            return outputs
 
 class RandomChoiceRotate(object):
 
@@ -271,6 +308,57 @@ class RandomChoiceRotate(object):
             outputs = Rotate(degree,
                              interp=self.interp)(*inputs)
             return outputs
+
+class RandomChoiceRotateWithLabel(object):
+
+    def __init__(self, 
+                 values,
+                 p=None,
+                 interp='bilinear',
+                 lazy=False):
+        """
+        Randomly rotate an image from a list of values. If the image
+        has multiple channels, the same rotation will be applied to each channel.
+
+        Arguments
+        ---------
+        values : a list or tuple
+            the values from which the rotation value will be sampled
+
+        p : a list or tuple the same length as `values`
+            the probabilities of sampling any given value. Must sum to 1.
+
+        interp : string in {'bilinear', 'nearest'} or list of strings
+            type of interpolation to use. You can provide a different
+            type of interpolation for each input, e.g. if you have two
+            inputs then you can say `interp=['bilinear','nearest']
+
+        lazy    : boolean
+            if true, only create the affine transform matrix and return that
+            if false, perform the transform on the tensor and return the tensor
+        """
+        if isinstance(values, (list, tuple)):
+            values = th.FloatTensor(values)
+        self.values = values
+        if p is None:
+            p = th.ones(len(values)) / len(values)
+        else:
+            if abs(1.0-sum(p)) > 1e-3:
+                raise ValueError('Probs must sum to 1')
+        self.p = p
+        self.interp = interp
+        self.lazy = lazy
+
+    def __call__(self, sample):
+        degree = th_random_choice(self.values, p=self.p)
+
+        if self.lazy:
+            return RotateWithLabel(degree, lazy=True)(sample[0])
+        else:
+            outputs = RotateWithLabel(degree,
+                             interp=self.interp)(sample)
+            return outputs
+
 
 
 class Rotate(object):
@@ -365,7 +453,8 @@ class RotateWithLabel(object):
             return rotation_matrix
         else:
             outputs = []
-            for idx, _input in enumerate(sample):
+            inputs = [sample]
+            for idx, _input in enumerate(inputs):
                 image = _input['image']
                 label = _input['label']
                 image_tf = th_affine2d(image,
@@ -374,8 +463,9 @@ class RotateWithLabel(object):
                                        center=True)
                 label_tf = th_affine2d(label,
                                        rotation_matrix,
-                                       mode=interp[idx],
+                                       mode='nearest',
                                        center=True)
+                
                 outputs.append({'image': image_tf, 'label': label_tf})
             return outputs if idx > 1 else outputs[0]
 
