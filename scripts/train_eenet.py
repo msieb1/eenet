@@ -4,6 +4,7 @@ import numpy as np
 from os.path import join
 import matplotlib.pyplot as plt
 import skimage
+import time
 
 import torch
 import torch.nn as nn
@@ -11,16 +12,17 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms, utils
-
 from tqdm import trange, tqdm
-from ipdb import set_trace as st
+
+import ipdb; ipdb.set_trace()
 from models.eenet import define_model
-from util.utils import weight_init, set_gpu_mode, zeros, get_numpy
+from util.utils import weight_init, set_gpu_mode, zeros, get_numpy, ensure_folder, time_stamped
 from util.eebuilder import EndEffectorPositionDataset
 from util.transforms import Rescale, RandomCrop, ToTensor 
 from torchsample.transforms.affine_transforms import Rotate, RotateWithLabel, RandomChoiceRotateWithLabel
 
 from pdb import set_trace as st
+
 ### Set GPU visibility
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"]= "1, 2"  # Set this for adequate GPU usage
@@ -113,7 +115,7 @@ def show_heatmap_of_samples(samples, model, use_cuda=True):
     plt.show()
 
 
-def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
+def train(args, model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
     """Train model and shows sample results
     
     Parameters
@@ -223,8 +225,20 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
         logs['acc']['tr'].append(acc_tr)
         logs['loss']['t'].append(loss_t)
         logs['acc']['t'].append(acc_t)
+
+        if e % args.save_every == 0 and e != 0:
+            print('Saving model weight files to {}'.format(args.model_folder))
+            save_model(model, model_filename(args.model_name, e), args.model_folder)
         print('-'*10)
     return logs
+
+def model_filename(model_name, epoch):
+    return "{model_name}-epoch-{epoch}.pk".format(model_name=model_name, epoch=epoch)
+
+def save_model(model, filename, model_folder):
+    ensure_folder(model_folder)
+    model_path = os.path.join(model_folder, filename)
+    torch.save(model.state_dict(), model_path)
 
 def create_model(args, use_cuda=True):
     """Creates neural network model, loading from checkpoint of provided
@@ -244,13 +258,12 @@ def create_model(args, use_cuda=True):
 
     model = define_model(IMG_HEIGHT, IMG_WIDTH, use_cuda)
     # tcn = PosNet()
-    if args.load_model:
+    if args.model_path != '':
         model_path = os.path.join(
             args.model_path,
         )
         # map_location allows us to load models trained on cuda to cpu.
         model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
-
     if use_cuda:
         model = model.cuda()
     return model
@@ -266,12 +279,16 @@ if __name__ == '__main__':
     parser.add_argument('--test_size', '-t', type=float, default=0.2)
     parser.add_argument('--epochs', '-e', type=int, default=100)
     parser.add_argument('--learning_rate', '-r', type=float, default=1e-4)
-    parser.add_argument('--batch_size', '-b', type=int, default=1)
-    parser.add_argument('--load_model', type=bool, default=False)
-    parser.add_argument('--model_path', type=str, default='')
-    parser.add_argument('--root_dir', type=str, default=ROOT_DIR)
+    parser.add_argument('--batch-size', '-b', type=int, default=1)
+    parser.add_argument('--model-path', type=str, default='')
+    parser.add_argument('--root-dir', type=str, default=ROOT_DIR)
+    parser.add_argument('--model-folder', type=str, default='./trained_models')
+    parser.add_argument('--model-name', type=str, default='eenet')
+    parser.add_argument('--save-every', type=int, default='5')
+    parser.add_argument('--eval', action='store_true')
     parser.add_argument('-sf', '--load_data_and_labels_from_same_folder', action='store_true')
     args = parser.parse_args()
+    args.model_folder = join(args.model_folder, time_stamped())
 
     print('\n')
     logging.info('Make sure you provided the correct GPU visibility in line 24 depending on your system !')
@@ -283,8 +300,9 @@ if __name__ == '__main__':
                                         transform=transforms.Compose(
                                             [
                                             Rescale((IMG_HEIGHT, IMG_WIDTH)),
+                                            # RandomCrop((int(IMG_HEIGHT * 0.8), int(IMG_WIDTH * 0.8))),
                                             ToTensor(),
-                                            #RandomChoiceRotateWithLabel([0,  177,179,180])
+                                            RandomChoiceRotateWithLabel([0,10,-10])
                                             ]),                                        
                                         load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
     # Split dataset in training and test set
@@ -302,7 +320,12 @@ if __name__ == '__main__':
 
     ### Train
     logging.info('Training.')
-    logs = train(model, loader_tr, loader_t, lr=args.learning_rate, epochs=args.epochs)
+    if not args.eval:
+        logs = train(args, model, loader_tr, loader_t, lr=args.learning_rate, epochs=args.epochs)
+    else:
+        dataiter = list(iter(loader_t))
+        show_heatmap_of_samples(dataiter[:20], model)
+
     # TODO save stuff
 
     # Default into debug mode if training is completed

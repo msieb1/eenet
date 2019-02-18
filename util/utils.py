@@ -3,6 +3,7 @@ from sklearn.model_selection import train_test_split
 from os.path import join
 import os
 import matplotlib.pyplot as plt
+import datetime
 
 import torch
 import torch.nn as nn
@@ -15,6 +16,19 @@ def weight_init(m):
     if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
         nn.init.xavier_uniform_(m.weight.data)
 
+def ensure_folder(folder):
+    path_fragments = os.path.split(folder)
+    joined = '.'
+    for fragment in path_fragments:
+        joined = os.path.join(joined, fragment)
+        if not os.path.exists(joined):
+            os.mkdir(joined)
+
+def time_stamped_w_name(fname, fmt='%Y-%m-%d-%H-%M-%S_{fname}'):
+    return datetime.datetime.now().strftime(fmt).format(fname=fname)
+
+def time_stamped(fmt='%Y-%m-%d-%H-%M-%S{}'):
+    return datetime.datetime.now().strftime(fmt).format('')
 
 """
 GPU wrappers from 

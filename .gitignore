@@ -106,3 +106,5 @@ data/
 
 #vs code
 .vscode
+.trained_models
+.trained_models/*

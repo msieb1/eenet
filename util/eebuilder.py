@@ -17,6 +17,9 @@ import warnings
 warnings.filterwarnings("ignore")
 # plt.ion()   # interactive mode
 
+ORIG_IMG_HEIGHT = 480 # These are the dimensions used as input for the ConvNet architecture, so these are independent of actual image size
+ORIG_IMG_WIDTH = 640
+
 def show_position(image, label):
     """Shows sample image with ground truth label
     

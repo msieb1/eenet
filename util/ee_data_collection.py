@@ -404,7 +404,6 @@ def collect_n_pictures_parallel(device_ids, num_pics):
 
         p2d_l = project_point_to_pixel(p3d_l, INTRIN)
         p2d_r = project_point_to_pixel(p3d_r, INTRIN)
-        import pdb; pdb.set_trace()
 
         pixels[0, :-1] = p2d_l
         pixels[0, -1] = p3d_l[-1]
