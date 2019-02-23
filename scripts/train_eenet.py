@@ -113,7 +113,7 @@ def show_heatmap_of_samples(samples, model, use_cuda=True):
     plt.show()
 
 
-def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
+def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
     """Train model and shows sample results
     
     Parameters
@@ -140,10 +140,12 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
     logs = {
         'loss': {
             'tr': [],
+            'val': [], 
             't': []
         },
         'acc': {
             'tr': [],
+            'val': [], 
             't': []
         }
     }
@@ -152,15 +154,17 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
     t_epochs = trange(epochs, desc='{}/{}'.format(0, epochs))
     num_batches_tr = len(loader_tr)
     num_batches_t = len(loader_t)
-    dataiter = list(iter(loader_t))
+    num_batche_val = len(loader_val)
+    dataiter_t = list(iter(loader_t))
+    dataiter_val = list(iter(loader_val))
     for e in t_epochs:
         # Train
         loss_tr = 0
         acc_tr = 0
         t_batches = tqdm(loader_tr, leave=False, desc='Train')
         # show heatmap of samples
-        if (e % 6 == 0):
-            show_heatmap_of_samples(dataiter[:20], model)
+        if (e % 10 == 0):
+            show_heatmap_of_samples(dataiter_val[:20], model)
         
         for sample in t_batches:
             xb = sample['image']
@@ -200,27 +204,47 @@ def train(model, loader_tr, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
         acc_tr /= num_batches_tr
 
         ## TODO implement validation
+        loss_val = 0
+        acc_val = 0
+        for xb, yb in tqdm(loader_val, leave=False, desc='Eval'):
+            if use_cuda:
+                xb = xb.cuda()
+                yb = yb.cuda()
+            pred = model(xb)
+            loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
+            loss_val += loss
+            acc_val += acc
+        loss_val /= num_batches_val
+        acc_val /= num_batches_val
+
+
         # Eval on test
         loss_t = 0
         acc_t = 0
-        # for xb, yb in tqdm(loader_t, leave=False, desc='Eval'):
-        #     if use_cuda:
-        #         xb = xb.cuda()
-        #         yb = yb.cuda()
-        #     pred = model(xb)
-        #     loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
-        #     loss_t += loss
-        #     acc_t += acc
-        # loss_t /= num_batches_t
-        # acc_t /= num_batches_t
+        for xb, yb in tqdm(loader_t, leave=False, desc='Test'):
+            if use_cuda:
+                xb = xb.cuda()
+                yb = yb.cuda()
+            pred = model(xb)
+            loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
+            loss_t += loss
+            acc_t += acc
+        loss_t /= num_batches_t
+        acc_t /= num_batches_t
+
+        loss_val = 0
+        acc_val = 0
         
         t_epochs.set_description('{}/{} | Tr {:.2f}, {:.2f}. T {:.2f}, {:.2f}'.format(e, epochs, loss_tr, acc_tr, loss_t, acc_t))
         t_epochs.update()
         print('epoch: ', e)
         print('train_loss: ', loss_tr)
+        print('val_loss: ', loss_val)
         print('test_loss: ', loss_t)
         logs['loss']['tr'].append(loss_tr)
         logs['acc']['tr'].append(acc_tr)
+        logs['loss']['val'].append(loss_val)
+        logs['acc']['val'].append(acc_val)
         logs['loss']['t'].append(loss_t)
         logs['acc']['t'].append(acc_t)
         print('-'*10)
@@ -312,9 +336,9 @@ if __name__ == '__main__':
                                             #RandomChoiceRotateWithLabel([0,  177,179,180])
                                             ]),                                        
                                         load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
-    # n = len(dataset)
-    # print(type(dataset))
-    # print(n)
+    n = len(dataset)
+    print(type(dataset))
+    print(n)
     # for i in range(n): 
     #     sample = dataset[i]
         
@@ -338,6 +362,11 @@ if __name__ == '__main__':
                         shuffle=True, num_workers=4)
     loader_t = DataLoader(dataset_t, batch_size=1, shuffle=True) 
 
+
+    # import ipdb; ipdb.set_trace()  
+
+
+
     
     ### Load model
     model = create_model(args)
@@ -345,7 +374,7 @@ if __name__ == '__main__':
 
     ### Train
     logging.info('Training.')
-    logs = train(model, loader_tr, loader_t, lr=args.learning_rate, epochs=args.epochs)
+    logs = train(model, loader_tr, loader_val, loader_t, lr=args.learning_rate, epochs=args.epochs)
     # TODO save stuff
 
     # Default into debug mode if training is completed
