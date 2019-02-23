@@ -282,6 +282,7 @@ if __name__ == '__main__':
     dataset = EndEffectorPositionDataset(root_dir=args.root_dir, 
                                         transform=transforms.Compose(
                                             [
+                                            RandomCrop((200, 400)), 
                                             Rescale((IMG_HEIGHT, IMG_WIDTH)),
                                             ToTensor(),
                                             #RandomChoiceRotateWithLabel([0,  177,179,180])

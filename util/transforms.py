@@ -65,26 +65,37 @@ class RandomCrop(object):
             self.output_size = output_size
 
     def __call__(self, sample):
-        image, labels = sample['image'], sample['label']
+        # image, labels = sample['image'], sample['label']
 
+        # h, w = image.shape[:2]
+        # new_h, new_w = self.output_size
+
+        # top = np.random.randint(0, h - new_h)
+        # left = np.random.randint(0, w - new_w)
+
+        # image = image[top: top + new_h,
+        #               left: left + new_w]
+        
+        # tsfm_labels = np.zeros((image.shape[0], image.shape[1], 2))
+        # for i in range(labels.shape[-1]):
+        #     landmarks = labels[..., i]
+        #     points = list(np.where(landmarks == 1))
+        #     points[0] = np.array(points[0] - top, dtype=np.int32)
+        #     points[1] = np.array(points[1] - left, dtype=np.int32)
+        #     tsfm_labels[tuple(points), i] = 1
+
+        # return {'image': image, 'label': tsfm_labels}
+        image, labels = sample['image'], sample['label']
         h, w = image.shape[:2]
         new_h, new_w = self.output_size
-
-        top = np.random.randint(0, h - new_h)
-        left = np.random.randint(0, w - new_w)
-
-        image = image[top: top + new_h,
-                      left: left + new_w]
         
-        tsfm_labels = np.zeros((image.shape[0], image.shape[1], 2))
-        for i in range(labels.shape[-1]):
-            landmarks = labels[..., i]
-            points = list(np.where(landmarks == 1))
-            points[0] = np.array(points[0] - top, dtype=np.int32)
-            points[1] = np.array(points[1] - left, dtype=np.int32)
-            tsfm_labels[tuple(points), i] = 1
+        crop_h = np.random.randint(0, h - new_h)
+        crop_w = np.random.randint(0, w - new_w)
+        cropped = image[crop_h:crop_h+new_h, crop_w:crop_w+new_w, :]
 
-        return {'image': image, 'label': tsfm_labels}
+        labels_cropped = labels[crop_h:crop_h+new_h, crop_w:crop_w+new_w, :]
+        
+        return {'image': cropped, 'label': labels_cropped}
 
 
 class ToTensor(object):
