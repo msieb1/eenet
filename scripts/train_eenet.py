@@ -17,7 +17,7 @@ from ipdb import set_trace as st
 from models.eenet import define_model
 from util.utils import weight_init, set_gpu_mode, zeros, get_numpy
 from util.eebuilder import EndEffectorPositionDataset
-from util.transforms import Rescale, RandomCrop, ToTensor 
+from util.transforms import Rescale, RandomRot, RandomCrop, ToTensor 
 from torchsample.transforms.affine_transforms import Rotate, RotateWithLabel, RandomChoiceRotateWithLabel
 
 from pdb import set_trace as st
@@ -255,6 +255,28 @@ def create_model(args, use_cuda=True):
         model = model.cuda()
     return model
 
+def visualize(sample): 
+    image = sample['image'].numpy().transpose((1, 2, 0))
+    label = sample['label'].numpy().transpose((1, 2, 0))
+
+    plt.figure() 
+    plt.imshow(image)
+    for i in range(np.shape(label)[-1]): 
+        point = list(np.where(label[:, :, i] == 1))
+        if len(point[0]) != 0: 
+            plt.scatter(point[1], point[0], color='red')
+    plt.show()
+
+def delete_incomplete_data(dataset):
+    n = len(dataset)
+    indices = []
+    for i in range(n): 
+        if np.sum(dataset[i]['label'].numpy()) >= 2: 
+            indices.append(i)
+    print(indices)
+    return np.take(dataset, indices)
+
+
 if __name__ == '__main__':
     """Parses arguments, creates dataloaders for training and test data, sets up model and logger, and trains network
     """
@@ -273,6 +295,7 @@ if __name__ == '__main__':
     parser.add_argument('-sf', '--load_data_and_labels_from_same_folder', action='store_true')
     args = parser.parse_args()
 
+
     print('\n')
     logging.info('Make sure you provided the correct GPU visibility in line 24 depending on your system !')
     logging.info('Loading {}'.format(args.root_dir))
@@ -282,12 +305,30 @@ if __name__ == '__main__':
     dataset = EndEffectorPositionDataset(root_dir=args.root_dir, 
                                         transform=transforms.Compose(
                                             [
-                                            RandomCrop((200, 400)), 
+                                            RandomCrop((400, 400)), 
+                                            RandomRot(-30., 30.), 
                                             Rescale((IMG_HEIGHT, IMG_WIDTH)),
                                             ToTensor(),
                                             #RandomChoiceRotateWithLabel([0,  177,179,180])
                                             ]),                                        
                                         load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
+    # n = len(dataset)
+    # print(type(dataset))
+    # print(n)
+    # for i in range(n): 
+    #     sample = dataset[i]
+        
+    #     # print(i, sample['image'].size(), np.sum(sample['label'].numpy()))
+    #     visualize(sample)
+    #     if i > 10: 
+    #         break
+
+    # # loop transforms
+    # # remove shitty transforms
+    # # cleaned = delete_incomplete_data(dataset)
+        
+    # import ipdb; ipdb.set_trace()  
+
     # Split dataset in training and test set
     n = len(dataset)
     n_test = int( n * .2 )  # number of test/val elements
@@ -295,7 +336,8 @@ if __name__ == '__main__':
     dataset_tr, dataset_t, dataset_val = train_set, val_set, test_set = random_split(dataset, (n_train, n_test, n_test))
     loader_tr = DataLoader(dataset_tr, batch_size=2,
                         shuffle=True, num_workers=4)
-    loader_t = DataLoader(dataset_t, batch_size=1, shuffle=True)                       
+    loader_t = DataLoader(dataset_t, batch_size=1, shuffle=True) 
+
     
     ### Load model
     model = create_model(args)
