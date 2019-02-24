@@ -10,10 +10,9 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from util.eebuilder import EndEffectorPositionDataset
 from skimage import io, transform
 from PIL import Image
+from ipdb import set_trace as st 
 
 
-def RemoveBadLabels(label, size): 
-	return
 
 def RandomRescale(sample, output_size): 
 	image, labels = sample['image'], sample['label']
@@ -64,9 +63,20 @@ def RandomTranslate(sample, x, y):
 
 def RandomRotate(sample, theta, resize=False, center=None): 
 	image, label = sample['image'], sample['label']
-	img_rot = transform.rotate(image, theta, resize=resize, order=0, preserve_range=True)
-	lbl_rot = transform.rotate(label, theta, resize=resize, order=0, preserve_range=True)
-	return {'image': img_rot, 'label': lbl_rot}
+	img_rot = transform.rotate(image, theta, resize=resize, order=2, preserve_range=True)
+	lbl_rot = transform.rotate(label, theta, resize=resize, order=2, preserve_range=True)
+
+
+	x = np.where(lbl_rot[:, :, 0] == 1)
+	y = np.where(lbl_rot[:, :, 1] == 1)
+
+
+	label = np.zeros(np.shape(lbl_rot))
+	label[np.mean(x[0]).astype(int), np.mean(x[1]).astype(int), 0] = 1
+	label[np.mean(y[0]).astype(int), np.mean(y[1]).astype(int), 1] = 1
+
+
+	return {'image': img_rot, 'label': label}
 
 
 def visualize(sample): 
@@ -101,16 +111,16 @@ if __name__ == '__main__':
                                         #     ]),                                        
                                         load_data_and_labels_from_same_folder=True)
 	h, w = np.shape(dataset[0]['image'])[:2]
+	print(h, w)
 
 	# visualize(dataset[0]['image'], dataset[0]['label'])
-	result = RandomCrop(dataset[0], [200, 400])
-	visualize(result)
+
 
 	theta = 15
 	resize=False
 	center=None
 
-	result2 = RandomRotate(result, theta, resize, center)
+	result2 = RandomRotate(dataset[0], theta, resize, center)
 	visualize(result2)
 
 	# plt.figure()

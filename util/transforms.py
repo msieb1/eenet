@@ -61,22 +61,46 @@ def visualize(sample):
     plt.close()
 
 class RandomRot(object): 
-    def __init__(self, lower, upper, resize=False, center=None):
+    def __init__(self, lower, upper, p, resize=False, center=None):
         assert isinstance(lower, float)
         assert isinstance(upper, float)
+        assert isinstance(p, float)
         self.lower = lower
         self.upper = upper
         self.resize = resize
         self.center = center
+        self.p = p
 
 
     def __call__(self, sample):
         image, label = sample['image'], sample['label']
-        theta = np.random.uniform(self.lower, self.upper)
-        print('theta: ', theta)
-        img_rot = transform.rotate(image, theta, resize=self.resize, order=0, preserve_range=True)
-        lbl_rot = transform.rotate(label, theta, resize=self.resize, order=0, preserve_range=True)
-        return {'image': img_rot, 'label': lbl_rot}
+        if np.random.random() < self.p: 
+            while True: 
+                theta = np.random.uniform(self.lower, self.upper)
+                img_rot = transform.rotate(image, theta, resize=self.resize, order=0, preserve_range=True)
+                lbl_rot = transform.rotate(label, theta, resize=self.resize, order=0, preserve_range=True)
+
+                
+                # print(len(x), len(y))
+                # print(x)
+                # print(y)
+                # print(np.sum(lbl_rot.flatten()))
+                # print(np.sum(label.flatten()))
+                # print(np.any(lbl_rot[:, :, 0] == 1))
+                # print(np.any(lbl_rot[:, :, 1] == 1))
+
+
+                if np.any(lbl_rot[:, :, 0] == 1) and np.any(lbl_rot[:, :, 1] == 1): 
+                    x = np.where(lbl_rot[:, :, 0] == 1)
+                    y = np.where(lbl_rot[:, :, 1] == 1)
+
+                    label = np.zeros(np.shape(lbl_rot))
+                    label[np.mean(x[0]).astype(int), np.mean(x[1]).astype(int), 0] = 1
+                    label[np.mean(y[0]).astype(int), np.mean(y[1]).astype(int), 1] = 1
+                    break
+            return {'image': img_rot, 'label': label}
+        else: 
+            return {'image': image, 'label': label}
 
 class RandomCrop(object):
     """Crop randomly the image in a sample.
@@ -109,6 +133,26 @@ class RandomCrop(object):
             if np.sum(labels_cropped) >= np.sum(labels): 
                 break
         return {'image': cropped, 'label': labels_cropped}
+
+class RandomVFlip(object): 
+    def __init__(self, p):
+        assert isinstance(p, float)
+        self.p = p
+    def __call__(self, sample): 
+        image, label = sample['image'], sample['label']
+        if np.random.random() < self.p: 
+            return {'image': np.flipud(image), 'label': np.flipud(label)}
+        return {'image': image, 'label': label}
+
+class RandomHFlip(object): 
+    def __init__(self, p):
+        assert isinstance(p, float)
+        self.p = p
+    def __call__(self, sample): 
+        image, label = sample['image'], sample['label']
+        if np.random.random() < self.p: 
+            return {'image': np.fliplr(image), 'label': np.fliplr(label)}
+        return {'image': image, 'label': label}
 
 
 class ToTensor(object):

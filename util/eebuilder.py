@@ -11,6 +11,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
+from PIL import Image
+import bisect
 
 # Ignore warnings
 import warnings
@@ -33,6 +35,72 @@ def show_position(image, label):
     plt.scatter(label[0], label[1], s=10, marker='.', c='r')
     plt.pause(0.001)  # pause a bit so that plots are updated
 
+class Subset(Dataset):
+    """
+    Subset of a dataset at specified indices.
+
+    Arguments:
+        dataset (Dataset): The whole Dataset
+        indices (sequence): Indices in the whole set selected for subset
+    """
+    def __init__(self, dataset, indices):
+        self.dataset = dataset
+        self.indices = indices
+
+    def __getitem__(self, idx):
+        return self.dataset[self.indices[idx]]
+
+    def __len__(self):
+        return len(self.indices)
+
+class Transform(Dataset): 
+    def __init__(self, dataset, transform):
+        self.dataset = dataset
+        self.transform = transform
+
+    def __getitem__(self, idx): 
+        return self.transform(self.dataset[idx])
+
+    def __len__(self): 
+        return len(self.dataset)
+
+
+class ConcatDataset(Dataset):
+    """
+    Dataset to concatenate multiple datasets.
+    Purpose: useful to assemble different existing datasets, possibly
+    large-scale datasets as the concatenation operation is done in an
+    on-the-fly manner.
+
+    Arguments:
+        datasets (sequence): List of datasets to be concatenated
+    """
+
+    @staticmethod
+    def cumsum(sequence):
+        r, s = [], 0
+        for e in sequence:
+            l = len(e)
+            r.append(l + s)
+            s += l
+        return r
+
+    def __init__(self, datasets):
+        super(ConcatDataset, self).__init__()
+        assert len(datasets) > 0, 'datasets should not be an empty iterable'
+        self.datasets = list(datasets)
+        self.cumulative_sizes = self.cumsum(self.datasets)
+
+    def __len__(self):
+        return self.cumulative_sizes[-1]
+
+    def __getitem__(self, idx):
+        dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+        return self.datasets[dataset_idx][sample_idx]
 
 class EndEffectorPositionDataset(Dataset):
     """End effector finger tip dataset."""
@@ -103,19 +171,25 @@ class EndEffectorPositionDataset(Dataset):
             #image = np.transpose(image, (2, 0, 1)).astype(np.float32)
             label = np.load(join(self.root_dir, 
                                 '{0:06d}.npy'.format(idx)))[..., :2] # only x and y needed
-            label = np.round(label).astype(np.int32)            
-            
+            label = np.round(label).astype(np.int32)
+
+        h, w = np.shape(image)[:2]   
         label_l = label[0] # left ee tip
         label_r = label[1] # right ee tip
+
+
         buff = np.zeros((image.shape[0], image.shape[1], 2), dtype=np.int64)
-        buff[label_l[1], label_l[0], 0] = 1
-        buff[label_r[1], label_r[0], 1] = 1
+        if label_l[1] < w and label_l[0] < h and np.all(label_l >= 0) and label_r[1] < w and label_r[0] < h and np.all(label_r >= 0): 
+            buff[label_l[1], label_l[0], 0] = 1
+            buff[label_r[1], label_r[0], 1] = 1
+       
+            label = buff
+            image = skimage.img_as_float32(image)
+            sample = {'image': image, 'label': label}
 
-        label = buff
-        image = skimage.img_as_float32(image)
-        sample = {'image': image, 'label': label}
-
-        # Transform image if provided
-        if self.transform:
-            sample = self.transform(sample)
-        return sample
+            # Transform image if provided
+            if self.transform:
+                sample = self.transform(sample)
+            return sample
+        else: 
+            pass

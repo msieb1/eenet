@@ -4,6 +4,7 @@ import numpy as np
 from os.path import join
 import matplotlib.pyplot as plt
 import skimage
+import pickle
 
 import torch
 import torch.nn as nn
@@ -16,11 +17,12 @@ from tqdm import trange, tqdm
 from ipdb import set_trace as st
 from models.eenet import define_model
 from util.utils import weight_init, set_gpu_mode, zeros, get_numpy
-from util.eebuilder import EndEffectorPositionDataset
-from util.transforms import Rescale, RandomRot, RandomCrop, ToTensor 
+from util.eebuilder import EndEffectorPositionDataset, ConcatDataset, Subset, Transform
+from util.transforms import Rescale, RandomRot, RandomCrop, ToTensor, RandomVFlip, RandomHFlip
 from torchsample.transforms.affine_transforms import Rotate, RotateWithLabel, RandomChoiceRotateWithLabel
 
 from pdb import set_trace as st
+
 ### Set GPU visibility
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"]= "1, 2"  # Set this for adequate GPU usage
@@ -30,6 +32,8 @@ _LOSS = nn.NLLLoss
 ROOT_DIR = '/home/msieb/projects/bullet-demonstrations/experiments/reach/data'
 IMG_HEIGHT = 240 # These are the dimensions used as input for the ConvNet architecture, so these are independent of actual image size
 IMG_WIDTH = 320
+
+np.random.seed()
 
 ### Helper functions
 def apply(func, M):
@@ -79,7 +83,7 @@ def imshow_heatmap(img, pred, label):
     pred_combined_heatmap /= np.abs(np.sum((pred_combined_heatmap)))
     plt.imshow(np.squeeze(pred_combined_heatmap), cmap="YlGnBu", interpolation='bilinear', alpha=0.3)
 
-def show_heatmap_of_samples(samples, model, use_cuda=True):
+def show_heatmap_of_samples(samples, model, iter, use_cuda=True):
     """Runs image through model and call imshow_heatmap to plot results
     
     Parameters
@@ -104,13 +108,46 @@ def show_heatmap_of_samples(samples, model, use_cuda=True):
             label = label.cuda()
         buf_l = np.where(label[:, 0, ...].cpu().numpy() ==1)[1:]
         buf_r = np.where(label[:, 1, ...].cpu().numpy() ==1)[1:]
-        label = [(buf_l[0][0], buf_l[1][0]), (buf_r[0][0], buf_r[1][0])]
-
+        
+        if len(buf_l) == 2 and len(buf_r) == 2: 
+            label = [(buf_l[0][0], buf_l[1][0]), (buf_r[0][0], buf_r[1][0])]
+        elif len(buf_r) < 2: 
+            label = [(buf_l[0][0], buf_l[1][0])]
+        else: 
+            label = [(buf_r[0][0], buf_r[1][0])]
         model.eval()
         pred = model(image.cuda())
         model.train()
         imshow_heatmap(skimage.img_as_ubyte(image.cpu().detach().numpy()), pred.cpu().detach().numpy(), label)
-    plt.show()
+    plt.savefig('./heatmaps/iter_' + str(iter) + '.png')
+    plt.close()
+
+
+def l2_distance(pred, label): 
+
+    pred_l = pred[..., 0].detach().cpu().numpy()
+    pred_r = pred[..., 1].detach().cpu().numpy()
+
+    pred_l /= np.abs(np.sum(np.exp(pred_l)))
+    pred_r /= np.abs(np.sum(np.exp(pred_r)))
+
+    pred_label_l = np.where(pred_l >= np.max(pred_l))[1:]
+    pred_label_r = np.where(pred_r >= np.max(pred_r))[1:]
+
+
+    yb_l = label[:, 0 ,...].detach().cpu().numpy()
+    yb_r = label[:, 1 ,...].detach().cpu().numpy()
+
+    label_l = np.where(yb_l == 1)[1:]
+    label_r = np.where(yb_r == 1)[1:]
+
+
+    pred_point = np.asarray([[np.mean(pred_label_l[0]), np.mean([pred_label_l[1]])], [np.mean(pred_label_r[0]), np.mean([pred_label_r[1]])]]).astype(int)
+    label_point = np.asarray([[label_l[0][0], label_l[1][0]], [label_r[0][0], label_r[1][0]]])
+
+    l2_error = np.linalg.norm(pred_point - label_point) 
+        
+    return l2_error
 
 
 def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda=True):
@@ -154,7 +191,7 @@ def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda
     t_epochs = trange(epochs, desc='{}/{}'.format(0, epochs))
     num_batches_tr = len(loader_tr)
     num_batches_t = len(loader_t)
-    num_batche_val = len(loader_val)
+    num_batches_val = len(loader_val)
     dataiter_t = list(iter(loader_t))
     dataiter_val = list(iter(loader_val))
     for e in t_epochs:
@@ -163,8 +200,8 @@ def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda
         acc_tr = 0
         t_batches = tqdm(loader_tr, leave=False, desc='Train')
         # show heatmap of samples
-        if (e % 10 == 0):
-            show_heatmap_of_samples(dataiter_val[:20], model)
+        if (e % 9 == 0):
+            show_heatmap_of_samples(dataiter_val[:10], model, e)
         
         for sample in t_batches:
             xb = sample['image']
@@ -189,9 +226,9 @@ def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda
             loss = loss_l + loss_r
             # loss = criterion(pred, torch.max(yb.view(yb.size()[0], -1), 1)[1])
 
-            # acc = compute_acc(labels_pred, yb)
+            acc = l2_distance(pred, yb)
             loss_tr += loss
-            # acc_tr += acc
+            acc_tr += acc
 
             loss.backward()
             opt.step()
@@ -203,37 +240,41 @@ def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda
         loss_tr /= num_batches_tr
         acc_tr /= num_batches_tr
 
+        
+        # import ipdb; ipdb.set_trace()  
+
+
         ## TODO implement validation
         loss_val = 0
-        acc_val = 0
-        for xb, yb in tqdm(loader_val, leave=False, desc='Eval'):
-            if use_cuda:
-                xb = xb.cuda()
-                yb = yb.cuda()
-            pred = model(xb)
-            loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
-            loss_val += loss
-            acc_val += acc
-        loss_val /= num_batches_val
-        acc_val /= num_batches_val
+        acc_val = test(model, dataiter_val)
+        # for sample in tqdm(loader_val, leave=False, desc='Eval'):
+        #     xb = sample['image']
+        #     yb = sample['label']
+        #     if use_cuda:
+        #         xb = xb.cuda()
+        #         yb = yb.cuda()
+        #     pred = model(xb)
+        #     loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
+        #     loss_val += loss
+        # loss_val /= num_batches_val
+        # acc_val /= num_batches_val
 
 
         # Eval on test
         loss_t = 0
-        acc_t = 0
-        for xb, yb in tqdm(loader_t, leave=False, desc='Test'):
-            if use_cuda:
-                xb = xb.cuda()
-                yb = yb.cuda()
-            pred = model(xb)
-            loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
-            loss_t += loss
-            acc_t += acc
-        loss_t /= num_batches_t
-        acc_t /= num_batches_t
+        acc_t = test(model, dataiter_t)
+        # for sample in tqdm(loader_t, leave=False, desc='Test'):
+        #     xb = sample['image']
+        #     yb = sample['label']
+        #     if use_cuda:
+        #         xb = xb.cuda()
+        #         yb = yb.cuda()
+        #     pred = model(xb)
+        #     loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
+        #     loss_t += loss
+        # loss_t /= num_batches_t
+        # acc_t /= num_batches_t
 
-        loss_val = 0
-        acc_val = 0
         
         t_epochs.set_description('{}/{} | Tr {:.2f}, {:.2f}. T {:.2f}, {:.2f}'.format(e, epochs, loss_tr, acc_tr, loss_t, acc_t))
         t_epochs.update()
@@ -279,7 +320,7 @@ def create_model(args, use_cuda=True):
         model = model.cuda()
     return model
 
-def visualize(sample): 
+def visualize(sample, j): 
     image = sample['image'].numpy().transpose((1, 2, 0))
     label = sample['label'].numpy().transpose((1, 2, 0))
 
@@ -289,16 +330,70 @@ def visualize(sample):
         point = list(np.where(label[:, :, i] == 1))
         if len(point[0]) != 0: 
             plt.scatter(point[1], point[0], color='red')
+    # plt.savefig('./0_view1/' + str(j) + '.png')
     plt.show()
 
 def delete_incomplete_data(dataset):
     n = len(dataset)
-    indices = []
+    valid_indices = []
     for i in range(n): 
-        if np.sum(dataset[i]['label'].numpy()) >= 2: 
-            indices.append(i)
-    print(indices)
-    return np.take(dataset, indices)
+        if dataset[i] != None: 
+            valid_indices.append(i)
+    
+    cleaned_dataset = Subset(dataset, valid_indices)
+    return cleaned_dataset
+
+def get_pred_labels(pred): 
+    pred_l = pred[..., 0]
+    pred_r = pred[..., 1]
+
+    pred_l /= np.abs(np.sum(np.exp(pred_l)))
+    pred_r /= np.abs(np.sum(np.exp(pred_r)))
+
+    pred_label_l = np.where(pred_l >= np.max(pred_l))[1:]
+    pred_label_r = np.where(pred_r >= np.max(pred_r))[1:]
+
+    pred_point = [[pred_label_l[0][0], pred_label_l[1][0]], [pred_label_r[0][0], pred_label_r[1][0]]]
+
+    return np.asarray(pred_point)
+
+def get_labels(label): 
+    buf_l = np.where(label[:, 0, ...].cpu().numpy() ==1)[1:]
+    buf_r = np.where(label[:, 1, ...].cpu().numpy() ==1)[1:]
+    
+    if len(buf_l) == 2 and len(buf_r) == 2: 
+        label = [(buf_l[0][0], buf_l[1][0]), (buf_r[0][0], buf_r[1][0])]
+    elif len(buf_r) < 2: 
+        label = [(buf_l[0][0], buf_l[1][0])]
+    else: 
+        label = [(buf_r[0][0], buf_r[1][0])]
+    return np.asarray(label)
+
+def test(model, samples, use_cuda=True): 
+    n = len(samples)
+    print('test n: ', n)
+    l2_error = 0
+    for i in range(n): 
+        sample = samples[i] 
+        image = sample['image']
+        label = sample['label']
+        if use_cuda:
+            image = image.cuda()
+            label = label.cuda()
+        label_point = get_labels(label)
+
+        model.eval()
+        pred = model(image.cuda()).detach().cpu().numpy()
+        model.train()
+        pred_point = get_pred_labels(pred)
+        
+        # print(i, label_point)
+        # print(i, pred_point)
+
+        l2_error += np.linalg.norm(label_point - pred_point)
+    return l2_error / float(n)
+
+
 
 
 if __name__ == '__main__':
@@ -327,39 +422,63 @@ if __name__ == '__main__':
     
     ### Create dataset
     dataset = EndEffectorPositionDataset(root_dir=args.root_dir, 
-                                        transform=transforms.Compose(
-                                            [
-                                            RandomCrop((400, 400)), 
-                                            RandomRot(-30., 30.), 
-                                            Rescale((IMG_HEIGHT, IMG_WIDTH)),
-                                            ToTensor(),
-                                            #RandomChoiceRotateWithLabel([0,  177,179,180])
-                                            ]),                                        
+                                        # transform=transforms.Compose(
+                                        #     [
+                                        #     RandomCrop((400, 400)), 
+                                        #     RandomRot(-30., 30.), 
+                                        #     Rescale((IMG_HEIGHT, IMG_WIDTH)),
+                                        #     ToTensor(),
+                                        #     #RandomChoiceRotateWithLabel([0,  177,179,180])
+                                        #     ]),                                        
                                         load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
+    
+    dataset = delete_incomplete_data(dataset)
     n = len(dataset)
-    print(type(dataset))
-    print(n)
-    # for i in range(n): 
-    #     sample = dataset[i]
-        
-    #     # print(i, sample['image'].size(), np.sum(sample['label'].numpy()))
-    #     visualize(sample)
+
+
+    n_test = int( n * .15 )  # number of test/val elements
+    n_train = n - 2 * n_test
+    dataset_tr, dataset_t, dataset_val = random_split(dataset, (n_train, n_test, n_test))
+    print(n, n_train, n_test)
+
+
+    crop_list = [(200, 400), (300, 400), (300, 300), (400, 400), (400, 300), (400, 200)]
+    crop_list = [(300, 400), (400, 300)]
+    crop_list = []
+    dataset_0 = Transform(dataset_tr, transforms.Compose(
+                        [
+                        Rescale((IMG_HEIGHT, IMG_WIDTH)),
+                        ]))
+    for i in range(len(crop_list)): 
+        dataset_cropped = Transform(dataset_tr, transforms.Compose(
+                        [
+                        RandomCrop(crop_list[i]), 
+                        ]))
+        dataset_0 = ConcatDataset([dataset_0, dataset_cropped])
+
+    dataset_tr = Transform(dataset_0, transforms.Compose(
+                        [
+                        # RandomVFlip(0.5), 
+                        # RandomHFlip(0.5), 
+                        # RandomRot(-30., 30., 0.5), 
+                        Rescale((IMG_HEIGHT, IMG_WIDTH)),
+                        ToTensor()
+                        ]))
+    print('training size: ', len(dataset_tr))
+    
+    dataset_t = Transform(dataset_t, transforms.Compose([Rescale((IMG_HEIGHT, IMG_WIDTH)), ToTensor()]))
+    dataset_val = Transform(dataset_val, transforms.Compose([Rescale((IMG_HEIGHT, IMG_WIDTH)), ToTensor()]))
+
+    # for i in range(n_train): 
+    #     sample = dataset_tr[i]
+    #     visualize(sample, i)
     #     if i > 10: 
     #         break
 
-    # # loop transforms
-    # # remove shitty transforms
-    # # cleaned = delete_incomplete_data(dataset)
-        
-    # import ipdb; ipdb.set_trace()  
-
-    # Split dataset in training and test set
-    n = len(dataset)
-    n_test = int( n * .2 )  # number of test/val elements
-    n_train = n - 2 * n_test
-    dataset_tr, dataset_t, dataset_val = train_set, val_set, test_set = random_split(dataset, (n_train, n_test, n_test))
+    
     loader_tr = DataLoader(dataset_tr, batch_size=2,
                         shuffle=True, num_workers=4)
+    loader_val = DataLoader(dataset_val, batch_size=1, shuffle=True) 
     loader_t = DataLoader(dataset_t, batch_size=1, shuffle=True) 
 
 
@@ -376,6 +495,15 @@ if __name__ == '__main__':
     logging.info('Training.')
     logs = train(model, loader_tr, loader_val, loader_t, lr=args.learning_rate, epochs=args.epochs)
     # TODO save stuff
+
+    with open('logs.pkl', 'wb') as f: 
+        pickle.dump(logs, f)
+
+    dataiter_t = list(iter(loader_t))
+    l2_error = test(model, dataiter_t)
+    print('l2 error: ', l2_error)
+
+
 
     # Default into debug mode if training is completed
     import ipdb; ipdb.set_trace()
