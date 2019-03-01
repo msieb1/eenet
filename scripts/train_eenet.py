@@ -22,6 +22,8 @@ from util.transforms import Rescale, RandomRot, RandomCrop, ToTensor, RandomVFli
 from torchsample.transforms.affine_transforms import Rotate, RotateWithLabel, RandomChoiceRotateWithLabel
 
 from pdb import set_trace as st
+from simple_graphs import plot_losses
+from tensorboardX import SummaryWriter
 
 ### Set GPU visibility
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
@@ -29,7 +31,8 @@ os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 
 ### Set Global Parameters
 _LOSS = nn.NLLLoss
-ROOT_DIR = '/home/msieb/projects/bullet-demonstrations/experiments/reach/data'
+# ROOT_DIR = '/home/msieb/projects/bullet-demonstrations/experiments/reach/data'
+ROOT_DIR = '/home/ahuang/git/eenet/1_view0_logs'
 IMG_HEIGHT = 240 # These are the dimensions used as input for the ConvNet architecture, so these are independent of actual image size
 IMG_WIDTH = 320
 
@@ -174,6 +177,10 @@ def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda
         contains metrics such as loss and accuracy
     """
 
+    logdir = ROOT_DIR + '_logs/'
+    writer = SummaryWriter(logdir)
+    print('writing logs to: ', logdir)
+
     logs = {
         'loss': {
             'tr': [],
@@ -194,6 +201,7 @@ def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda
     num_batches_val = len(loader_val)
     dataiter_t = list(iter(loader_t))
     dataiter_val = list(iter(loader_val))
+
     for e in t_epochs:
         # Train
         loss_tr = 0
@@ -246,34 +254,73 @@ def train(model, loader_tr, loader_val, loader_t, lr=1e-4, epochs=1000, use_cuda
 
         ## TODO implement validation
         loss_val = 0
-        acc_val = test(model, dataiter_val)
-        # for sample in tqdm(loader_val, leave=False, desc='Eval'):
-        #     xb = sample['image']
-        #     yb = sample['label']
-        #     if use_cuda:
-        #         xb = xb.cuda()
-        #         yb = yb.cuda()
-        #     pred = model(xb)
-        #     loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
-        #     loss_val += loss
-        # loss_val /= num_batches_val
-        # acc_val /= num_batches_val
+        # acc_val = test(model, dataiter_val)
+        acc_val = 0
+        for sample in tqdm(loader_val, leave=False, desc='Eval'):
+            xb = sample['image']
+            yb = sample['label']
+            if use_cuda:
+                xb = xb.cuda()
+                yb = yb.cuda()
+            opt.zero_grad()
+            with torch.no_grad():
+                pred = model(xb)
+                pred_flattened = pred.view(pred.size()[0], -1, 2)
+                pred_l = pred_flattened[..., 0]
+                pred_r = pred_flattened[..., 1]
+
+                yb_flattened = yb.view(yb.size()[0], 2, -1)
+                yb_l = yb_flattened[:, 0 ,...]
+                yb_r = yb_flattened[:, 1 ,...]
+
+                loss_l = criterion(pred_l, torch.max(yb_l, 1)[1])
+                loss_r = criterion(pred_r, torch.max(yb_r, 1)[1])
+                loss = loss_l + loss_r
+                loss_val += loss
+
+                label_point = get_labels(yb)
+                pred_point = get_pred_labels(pred.detach().cpu().numpy())
+                acc_val += np.linalg.norm(label_point - pred_point)
+
+        loss_val /= num_batches_val
+        acc_val /= num_batches_val
 
 
         # Eval on test
         loss_t = 0
-        acc_t = test(model, dataiter_t)
-        # for sample in tqdm(loader_t, leave=False, desc='Test'):
-        #     xb = sample['image']
-        #     yb = sample['label']
-        #     if use_cuda:
-        #         xb = xb.cuda()
-        #         yb = yb.cuda()
-        #     pred = model(xb)
-        #     loss = criterion(pred.view(pred.size()[0], -1), torch.max(yb.view(yb.size()[0], -1), 1)[1])
-        #     loss_t += loss
-        # loss_t /= num_batches_t
-        # acc_t /= num_batches_t
+        acc_t = 0
+        for sample in tqdm(loader_t, leave=False, desc='Test'):
+            xb = sample['image']
+            yb = sample['label']
+            if use_cuda:
+                xb = xb.cuda()
+                yb = yb.cuda()
+            opt.zero_grad()
+            with torch.no_grad():
+                pred = model(xb)
+                pred_flattened = pred.view(pred.size()[0], -1, 2)
+                pred_l = pred_flattened[..., 0]
+                pred_r = pred_flattened[..., 1]
+
+                yb_flattened = yb.view(yb.size()[0], 2, -1)
+                yb_l = yb_flattened[:, 0 ,...]
+                yb_r = yb_flattened[:, 1 ,...]
+
+                loss_l = criterion(pred_l, torch.max(yb_l, 1)[1])
+                loss_r = criterion(pred_r, torch.max(yb_r, 1)[1])
+                loss = loss_l + loss_r
+                loss_t += loss
+
+                label_point = get_labels(yb)
+                pred_point = get_pred_labels(pred.detach().cpu().numpy())
+                acc_t += np.linalg.norm(label_point - pred_point)
+
+
+        loss_t /= num_batches_t
+        acc_t /= num_batches_t
+
+        writer.add_scalar('data/train_loss', loss_tr, e)
+        writer.add_scalar('data/train_acc', acc_tr, e)
 
         
         t_epochs.set_description('{}/{} | Tr {:.2f}, {:.2f}. T {:.2f}, {:.2f}'.format(e, epochs, loss_tr, acc_tr, loss_t, acc_t))
@@ -383,14 +430,12 @@ def test(model, samples, use_cuda=True):
         label_point = get_labels(label)
 
         model.eval()
-        pred = model(image.cuda()).detach().cpu().numpy()
+        pred = model(image.cuda())
         model.train()
-        pred_point = get_pred_labels(pred)
-        
-        # print(i, label_point)
-        # print(i, pred_point)
+        pred_point = get_pred_labels(pred.detach().cpu().numpy())        
 
         l2_error += np.linalg.norm(label_point - pred_point)
+    
     return l2_error / float(n)
 
 
@@ -419,6 +464,9 @@ if __name__ == '__main__':
     logging.info('Make sure you provided the correct GPU visibility in line 24 depending on your system !')
     logging.info('Loading {}'.format(args.root_dir))
     logging.info('Processing Data')
+
+    
+
     
     ### Create dataset
     dataset = EndEffectorPositionDataset(root_dir=args.root_dir, 
@@ -436,15 +484,16 @@ if __name__ == '__main__':
     n = len(dataset)
 
 
-    n_test = int( n * .15 )  # number of test/val elements
+    n_test = int(n * .15 )  # number of test/val elements
     n_train = n - 2 * n_test
     dataset_tr, dataset_t, dataset_val = random_split(dataset, (n_train, n_test, n_test))
     print(n, n_train, n_test)
 
 
+
     crop_list = [(200, 400), (300, 400), (300, 300), (400, 400), (400, 300), (400, 200)]
     crop_list = [(300, 400), (400, 300)]
-    crop_list = []
+    # crop_list = []
     dataset_0 = Transform(dataset_tr, transforms.Compose(
                         [
                         Rescale((IMG_HEIGHT, IMG_WIDTH)),
@@ -458,9 +507,9 @@ if __name__ == '__main__':
 
     dataset_tr = Transform(dataset_0, transforms.Compose(
                         [
-                        # RandomVFlip(0.5), 
-                        # RandomHFlip(0.5), 
-                        # RandomRot(-30., 30., 0.5), 
+                        RandomVFlip(0.5), 
+                        RandomHFlip(0.5), 
+                        RandomRot(-30., 30., 0.5), 
                         Rescale((IMG_HEIGHT, IMG_WIDTH)),
                         ToTensor()
                         ]))
@@ -482,26 +531,29 @@ if __name__ == '__main__':
     loader_t = DataLoader(dataset_t, batch_size=1, shuffle=True) 
 
 
-    # import ipdb; ipdb.set_trace()  
-
-
-
-    
     ### Load model
     model = create_model(args)
-    # model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count())) # Parallize model if multiple GPUs are available
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # if torch.cuda.device_count() > 1:
+    #     print("Let's use", torch.cuda.device_count(), "GPUs!")
+    #     model = nn.DataParallel(model)
+    # model.to(device)
+    # import ipdb; ipdb.set_trace()  
 
     ### Train
     logging.info('Training.')
     logs = train(model, loader_tr, loader_val, loader_t, lr=args.learning_rate, epochs=args.epochs)
     # TODO save stuff
 
-    with open('logs.pkl', 'wb') as f: 
+    with open('1_logs.pkl', 'wb') as f: 
         pickle.dump(logs, f)
 
     dataiter_t = list(iter(loader_t))
     l2_error = test(model, dataiter_t)
     print('l2 error: ', l2_error)
+
+    plot_losses(logs, '1_goodtransform')
 
 
 
