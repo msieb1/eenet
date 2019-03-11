@@ -48,10 +48,35 @@ class Subset(Dataset):
         self.indices = indices
 
     def __getitem__(self, idx):
-        return self.dataset[self.indices[idx]]
+        image = self.dataset[self.indices[idx]]['image']
+        label = self.dataset[self.indices[idx]]['label']
+        return {'image': image, 'label': label}
 
     def __len__(self):
         return len(self.indices)
+
+class FixIndices(Dataset): 
+    def __init__(self, dataset):
+        self.dataset = dataset
+    def __getitem__(self, idx):
+        image = self.dataset[idx]['image']
+        label = self.dataset[idx]['label']
+        return {'image': image, 'label': label}
+    def __len__(self):
+        return len(self.dataset)
+
+# class KFoldVal(Dataset): 
+#     def __init__(self, augmented, original, indices):
+#         self.augmented = augmented
+#         self.original = original
+
+#     def __getitem__(self, idx):
+#         if self.augmented
+#         return self.augmented[self.indices[idx]]
+
+#     def __len__(self):
+#         return len(self.indices)
+
 
 class Transform(Dataset): 
     def __init__(self, dataset, transform):
@@ -63,6 +88,7 @@ class Transform(Dataset):
 
     def __len__(self): 
         return len(self.dataset)
+
 
 
 class ConcatDataset(Dataset):
@@ -101,6 +127,8 @@ class ConcatDataset(Dataset):
         else:
             sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
         return self.datasets[dataset_idx][sample_idx]
+
+
 
 class EndEffectorPositionDataset(Dataset):
     """End effector finger tip dataset."""
@@ -179,9 +207,15 @@ class EndEffectorPositionDataset(Dataset):
 
 
         buff = np.zeros((image.shape[0], image.shape[1], 2), dtype=np.int64)
-        if label_l[1] < w and label_l[0] < h and np.all(label_l >= 0) and label_r[1] < w and label_r[0] < h and np.all(label_r >= 0): 
+
+
+        if label_l[1] < h and label_l[0] < w and np.all(label_l >= 0) and label_r[1] < h and label_r[0] < w and np.all(label_r >= 0): 
             buff[label_l[1], label_l[0], 0] = 1
             buff[label_r[1], label_r[0], 1] = 1
+
+        # if label_l[1] < w and label_l[0] < h and np.all(label_l >= 0) and label_r[1] < w and label_r[0] < h and np.all(label_r >= 0): 
+        #     buff[label_l[0], label_l[1], 0] = 1
+        #     buff[label_r[0], label_r[1], 1] = 1
        
             label = buff
             image = skimage.img_as_float32(image)

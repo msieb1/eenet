@@ -101,8 +101,144 @@ class RandomRot(object):
             return {'image': img_rot, 'label': label}
         else: 
             return {'image': image, 'label': label}
+class RandomSquare(object): 
+    def __init__(self, max_num = 4):
+        self.max_num = max_num
+    def __call__(self, sample):
+        image, labels = sample['image'], sample['label']
+        h, w = image.shape[:2]
+        num = np.random.randint(0, self.max_num)
+        new = image
+        for i in range(num): 
+
+            center_h = np.random.randint(0, h)
+            center_w = np.random.randint(0, w)
+
+            width = int(np.random.randint(0, h/2) / 2)
+            # print(center_w, center_h, width)
+            # import ipdb; ipdb.set_trace()
+
+            x_low = center_h - width
+            x_high = center_h + width
+            y_low = center_w - width
+            y_high = center_w + width
+
+            x_low = max(0, x_low)
+            y_low = max(0, y_low)
+            x_high = min(x_high, h)
+            y_high = min(y_high, w)
+            new[x_low:x_high, y_low:y_high, :] = 0
+
+        return {'image': new, 'label': labels}
+
+class RandomVLines(object): 
+    def __init__(self, max_num = 4):
+        self.max_num = max_num
+    def __call__(self, sample):
+        image, labels = sample['image'], sample['label']
+        h, w = image.shape[:2]
+        num = np.random.randint(0, self.max_num)
+        total_mask = np.ones([h, w, 3])
+        for i in range(num): 
+            mask = np.zeros([h, w, 3])
+
+            center_h = np.random.randint(0, h)
+            center_w = np.random.randint(0, w)
+
+            width = int(np.random.randint(5, int(w/20.)) / 2)
+            height = int(np.random.randint(int(h/10.), int(h/2.)) / 2) 
+            # print(center_w, center_h, width)
+            # import ipdb; ipdb.set_trace()
+
+            x_low = center_h - height
+            x_high = center_h + height
+            y_low = center_w - width
+            y_high = center_w + width
+
+            
+            x_low = max(0, x_low)
+            y_low = max(0, y_low)
+            x_high = min(x_high, h)
+            y_high = min(y_high, w)
+            mask[x_low:x_high, y_low:y_high, :] = 1
+            theta = np.random.uniform(-30, 30)
+            mask = transform.rotate(mask, theta, resize=False, order=0, preserve_range=True)
+            mask = np.abs((1 - mask))
+            total_mask = np.multiply(total_mask, mask)
+        new = np.multiply(total_mask, image)
+        return {'image': new, 'label': labels}
+
+
+class RandomBlur(object): 
+    def __init__(self, p):
+        self.p = p
+
+
+    def __call__(self, sample):
+        image, labels = sample['image'], sample['label']
+        h, w = image.shape[:2]
+
+        l1 = np.where(labels[:, :, 0] == 1)
+        l2 = np.where(labels[:, :, 1] == 1)
+
+        distance = np.sqrt((l1[0][0] - l2[0][0])**2 + (l1[1][0] - l2[1][0])**2)
+        width = int(np.random.uniform(0, distance))
+
+        blurred = image
+        if np.random.random() < self.p:
+            x_low = l1[0][0] - width
+            x_high = l1[0][0] + width
+            y_low = l1[1][0] - width
+            y_high = l1[1][0] + width
+
+        else: 
+            x_low = l2[0][0] - width
+            x_high = l2[0][0] + width
+            y_low = l2[1][0] - width
+            y_high = l2[1][0] + width
+        x_low = max(0, x_low)
+        y_low = max(0, y_low)
+        x_high = min(x_high, w)
+        y_high = min(y_high, h)
+        blurred[x_low:x_high, y_low:y_high, :] = 0
+        #np.mean(image[x_low:x_high, y_low:y_high, :], axis=(0, 1))
+        return {'image': blurred, 'label': labels}
+
+
 
 class RandomCrop(object):
+    """Crop randomly the image in a sample.
+
+    Args:
+        output_size (tuple or int): Desired output size. If int, square crop
+            is made.
+    """
+
+    def __init__(self, output_size):
+        assert isinstance(output_size, (int, tuple))
+        if isinstance(output_size, int):
+            self.output_size = (output_size, output_size)
+        else:
+            assert len(output_size) == 2
+            self.output_size = output_size
+
+    def __call__(self, sample):
+        image, labels = sample['image'], sample['label']
+        h, w = image.shape[:2]
+        new_h, new_w = self.output_size
+
+        while True: 
+        
+            crop_h = np.random.randint(0, h - new_h)
+            crop_w = np.random.randint(0, w - new_w)
+            cropped = image[crop_h:crop_h+new_h, crop_w:crop_w+new_w, :]
+
+            labels_cropped = labels[crop_h:crop_h+new_h, crop_w:crop_w+new_w, :]
+            if np.sum(labels_cropped) >= np.sum(labels): 
+                break
+        return {'image': cropped, 'label': labels_cropped}
+
+class RandomCropRand(object):
     """Crop randomly the image in a sample.
 
     Args:
