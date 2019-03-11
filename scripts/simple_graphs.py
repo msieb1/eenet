@@ -13,6 +13,23 @@ def plot_all_losses(folders, labels):
 	plt.savefig('./all_trainingloss.png')
 	plt.close()
 
+def plot_losses(logs, out): 
+	plt.figure()
+	plt.title(out + ' Losses')
+	keys = logs['loss'].keys().sort()
+	for key in keys: 
+		plt.plot(logs['loss'][key], label=key)
+	plt.legend(loc='upper right')
+	plt.savefig('./' + out + '_loss.png')
+	plt.close()
+
+	plt.figure()
+	plt.title(out + ' Accs')
+	for key in keys: 
+		plt.plot(logs['acc'][key], label=key)
+	plt.legend(loc='upper right')
+	plt.savefig('./' + out + '_acc.png')
+	plt.close()
 
 def plot_tr_loss(logs, folder): 
 	plt.figure()

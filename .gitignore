@@ -104,5 +104,12 @@ data/
 #venv
 .venv
 
+eenet0/
+0_view0/
+1_view0/
+logs/
+blah/
+
+
 #vs code
 .vscode

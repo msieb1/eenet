@@ -238,7 +238,7 @@ class RandomCrop(object):
                 break
         return {'image': cropped, 'label': labels_cropped}
 
-class RandomCropRand(object):
+class RandomScaledCrop(object):
     """Crop randomly the image in a sample.
 
     Args:
@@ -246,23 +246,51 @@ class RandomCropRand(object):
             is made.
     """
 
-    def __init__(self, output_size):
-        assert isinstance(output_size, (int, tuple))
-        if isinstance(output_size, int):
-            self.output_size = (output_size, output_size)
-        else:
-            assert len(output_size) == 2
-            self.output_size = output_size
+    def __init__(self, min_scale, max_scale, min_ar, max_ar):
+        self.min_scale = min_scale
+        self.max_scale = max_scale
+        self.min_ar = min_ar
+        self.max_ar = max_ar
 
     def __call__(self, sample):
         image, labels = sample['image'], sample['label']
         h, w = image.shape[:2]
-        new_h, new_w = self.output_size
+
+        points = list(np.where(labels == 1))
+        h_range = abs(points[0][0] - points[1][0])
+        w_range = abs(points[0][1] - points[1][1])
+
+        scale_limit = max(h_range / h, w_range / w)
+        min_scale = max(self.min_scale, scale_limit)
+
+        scale = np.random.uniform(min_scale + 0.05, self.max_scale)
+        ratio = np.random.uniform(self.min_ar, self.max_ar)
+        
+        new_w = int(scale * w)
+        new_h = int(new_w * ratio)
+
+        new_w = min(w, new_w)
+        new_h = min(h, new_h)
+
+        # print(scale, ratio, new_w, new_h)
+
+        
+        # import ipdb; ipdb.set_trace()
+
 
         while True: 
+            if new_h == h: 
+                crop_h = 0
+            else: 
+                crop_h = np.random.randint(0, h - new_h)
+            if new_w == w: 
+                crop_w = 0
+            else: 
+                crop_w = np.random.randint(0, w - new_w)
+
         
-            crop_h = np.random.randint(0, h - new_h)
-            crop_w = np.random.randint(0, w - new_w)
+            # crop_h = np.random.randint(0, h - new_h)
+            # crop_w = np.random.randint(0, w - new_w)
             cropped = image[crop_h:crop_h+new_h, crop_w:crop_w+new_w, :]
 
             labels_cropped = labels[crop_h:crop_h+new_h, crop_w:crop_w+new_w, :]

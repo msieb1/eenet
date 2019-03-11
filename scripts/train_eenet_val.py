@@ -19,7 +19,7 @@ from ipdb import set_trace as st
 from models.eenet import define_model
 from util.utils import weight_init, set_gpu_mode, zeros, get_numpy
 from util.eebuilder import EndEffectorPositionDataset, ConcatDataset, Subset, Transform, FixIndices
-from util.transforms import Rescale, RandomRot, RandomCrop, ToTensor, RandomVFlip, RandomHFlip, RandomBlur, RandomSquare, RandomVLines, RandomScaledCrop
+from util.transforms import Rescale, RandomRot, RandomCrop, ToTensor, RandomVFlip, RandomHFlip, RandomBlur, RandomSquare, RandomVLines
 from torchsample.transforms.affine_transforms import Rotate, RotateWithLabel, RandomChoiceRotateWithLabel
 
 from pdb import set_trace as st
@@ -130,7 +130,7 @@ def show_heatmap_of_samples(samples, model, iter, path, use_cuda=True):
 
 
 def show_all_heatmaps(samples, model, path, use_cuda=True):
-    """plots heamaps for all images in sample (e.g. all validation set)
+    """Runs image through model and call imshow_heatmap to plot results
     
     Parameters
     ----------
@@ -165,7 +165,7 @@ def show_all_heatmaps(samples, model, path, use_cuda=True):
         pred = model(image.cuda())
         model.train()
         imshow_heatmap(skimage.img_as_ubyte(image.cpu().detach().numpy()), pred.cpu().detach().numpy(), label)
-        plt.savefig(path + str(i) + '.png')
+        plt.savefig(path + str(sample['index']) + '.png')
         plt.close()
 
 
@@ -224,12 +224,12 @@ def train(model, loader_tr, loader_val, loader_t, loader_img_tr, path, lr=1e-4, 
         os.makedirs(path + '/tensorboard/')
     if not os.path.exists(path + '/final_heatmaps_val/'):
         os.makedirs(path + '/final_heatmaps_val/')
+    if not os.path.exists(path + '/final_heatmaps_tr/'):
+        os.makedirs(path + '/final_heatmaps_tr/')
     if not os.path.exists(path + '/heatmaps_val/'):
         os.makedirs(path + '/heatmaps_val/')
     if not os.path.exists(path + '/heatmaps_tr/'):
         os.makedirs(path + '/heatmaps_tr/')
-    if not os.path.exists(path + '/heatmaps_test/'):
-        os.makedirs(path + '/heatmaps_test/')
     
     writer = SummaryWriter(path + '/tensorboard/')
     print('writing logs to: ', path + '/tensorboard/')
@@ -280,7 +280,7 @@ def train(model, loader_tr, loader_val, loader_t, loader_img_tr, path, lr=1e-4, 
             fig_tr = show_heatmap_of_samples(dataiter_img_tr, model, e, path + '/heatmaps_tr/')
             writer.add_figure('imgs_tr', fig_tr, global_step=e)
 
-            fig_test = show_heatmap_of_samples(dataiter_t, model, e, path + '/heatmaps_test/')
+            fig_test = show_heatmap_of_samples(dataiter_t, model, e, path + '/heatmaps_tr/')
             writer.add_figure('imgs_test', fig_test, global_step=e)
 
 
@@ -335,9 +335,12 @@ def train(model, loader_tr, loader_val, loader_t, loader_img_tr, path, lr=1e-4, 
         acc_tr /= num_batches_tr
 
         
+        # import ipdb; ipdb.set_trace()  
 
 
+        ## TODO implement validation
         loss_val = 0
+        # acc_val = test(model, dataiter_val)
         acc_val = 0
         for sample in tqdm(loader_val, leave=False, desc='Eval'):
             xb = sample['image']
@@ -408,8 +411,8 @@ def train(model, loader_tr, loader_val, loader_t, loader_img_tr, path, lr=1e-4, 
         writer.add_scalar('data/train_acc', acc_tr, e)
         writer.add_scalar('data/val_loss', loss_val, e)
         writer.add_scalar('data/val_acc', acc_val, e)
-        # writer.add_scalar('data/test_loss', loss_t, e)
-        # writer.add_scalar('data/test_acc', acc_t, e)
+        writer.add_scalar('data/test_loss', loss_t, e)
+        writer.add_scalar('data/test_acc', acc_t, e)
 
         
         t_epochs.set_description('{}/{} | Tr {:.2f}, {:.2f}. T {:.2f}, {:.2f}'.format(e, epochs, loss_tr, acc_tr, loss_val, acc_val))
@@ -462,7 +465,7 @@ def create_model(args, use_cuda=True):
         model = model.cuda()
     return model
 
-def visualize(sample): 
+def visualize(sample, j): 
     image = sample['image'].numpy().transpose((1, 2, 0))
     label = sample['label'].numpy().transpose((1, 2, 0))
 
@@ -472,6 +475,7 @@ def visualize(sample):
         point = list(np.where(label[:, :, i] == 1))
         if len(point[0]) != 0: 
             plt.scatter(point[1], point[0], color='red')
+    # plt.savefig('./0_view1/' + str(j) + '.png')
     plt.show()
 
 def delete_incomplete_data(dataset):
@@ -532,7 +536,35 @@ def test(model, samples, use_cuda=True):
     
     return l2_error / float(n)
 
+def get_augmented_fold(original, augmented): 
+    n_orig = len(original)
+    indices = np.zeros(n_orig).astype(int)
+    for i in range(n_orig): 
+        indices[i] = original[i]['index']
+    # print(indices)
 
+    n_aug = len(augmented)
+    ind_aug = []
+    for i in range(n_aug): 
+        if augmented[i]['index'] in indices: 
+            ind_aug.append(i)
+    # print(ind_aug)
+    aug_kfold = Subset(augmented, ind_aug)
+    return aug_kfold
+
+def get_index_mapping(original, augmented): 
+    n_orig = len(original)
+    n_aug = len(augmented)
+    multiple = int(n_aug / n_orig) 
+
+    where = np.zeros(n_orig).astype(int)
+    mapping = np.zeros([n_orig, multiple]).astype(int)
+    for i in range(n_aug): 
+        index = augmented[i]['index']
+        mapping[index, where[index]] = i
+        where[index] += 1
+    print('mapping success? ', np.all(where == multiple))
+    return mapping
 
 def get_transformed_dataset(original, crop_list): 
     dataset_0 = Transform(original, transforms.Compose(
@@ -549,68 +581,52 @@ def get_transformed_dataset(original, crop_list):
 
     augmented = Transform(dataset_0, transforms.Compose(
                         [
+                        # RandomVFlip(0.5), 
+                        # RandomHFlip(0.5), 
                         RandomSquare(5),
                         RandomVLines(10),
+                        # RandomBlur(0.5),
                         RandomRot(-180., 180., 0.5), 
                         Rescale((IMG_HEIGHT, IMG_WIDTH)),
                         # ToTensor()
                         ]))
     return augmented
 
-def get_new_transformed(original, mult): 
+def get_rotated_dataset(original, mult): 
     dataset_0 = original
+
     for i in range(mult): 
-        dataset_0 = ConcatDataset([dataset_0, original])
-    
+        dataset_rot = Transform(original, transforms.Compose(
+                        [
+                        RandomRot(-180., 180., 1.), 
+                        ]))
+        dataset_0 = ConcatDataset([dataset_0, dataset_rot])
     augmented = Transform(dataset_0, transforms.Compose(
                         [
-                        # RandomSquare(5),
-                        # RandomVLines(10),
-                        # RandomRot(-180., 180., 0.5), 
-                        RandomScaledCrop(0.25, 1., 0.75, 1.33),
-                        RandomVLines(10),
-                        RandomSquare(5),
-                        RandomRot(-180., 180., 0.5), 
-                        # Rescale((IMG_HEIGHT, IMG_WIDTH)),
-                        # ToTensor()
+                        Rescale((IMG_HEIGHT, IMG_WIDTH)),
                         ]))
     return augmented
 
-# def get_rotated_dataset(original, mult): 
-#     dataset_0 = original
+def get_occluded_dataset(original, mult): 
+    dataset_0 = original
 
-#     for i in range(mult): 
-#         dataset_rot = Transform(original, transforms.Compose(
-#                         [
-#                         RandomRot(-180., 180., 1.), 
-#                         ]))
-#         dataset_0 = ConcatDataset([dataset_0, dataset_rot])
-#     augmented = Transform(dataset_0, transforms.Compose(
-#                         [
-#                         Rescale((IMG_HEIGHT, IMG_WIDTH)),
-#                         ]))
-#     return augmented
+    # for i in range(mult):
 
-# def get_occluded_dataset(original, mult): 
-#     dataset_0 = original
-
-#     # for i in range(mult):
-
-#     #     # dataset_occ = Transform(original, transforms.Compose(
-#     #     #                 [
-#     #     #                 # RandomBlur(0.5), 
-#     #     #                 RandomSquare(0.5),
-#     #     #                 ]))
-#     #     # dataset_0 = ConcatDataset([dataset_0, dataset_occ])
-#     #     dataset_0 = ConcatDataset([dataset_0, original])
-#     augmented = Transform(dataset_0, transforms.Compose(
-#                         [
-#                         # RandomSquare(3),
-#                         # RandomRot(-90., 90., 0.75), 
-#                         RandomSquare(7),
-#                         Rescale((IMG_HEIGHT, IMG_WIDTH)),
-#                         ]))
-#     return augmented
+    #     # dataset_occ = Transform(original, transforms.Compose(
+    #     #                 [
+    #     #                 # RandomBlur(0.5), 
+    #     #                 RandomSquare(0.5),
+    #     #                 ]))
+    #     # dataset_0 = ConcatDataset([dataset_0, dataset_occ])
+    #     dataset_0 = ConcatDataset([dataset_0, original])
+    augmented = Transform(dataset_0, transforms.Compose(
+                        [
+                        # RandomSquare(3),
+                        # RandomRot(-90., 90., 0.75), 
+                        RandomSquare(7),
+                        Rescale((IMG_HEIGHT, IMG_WIDTH)),
+                        ]))
+    return augmented
 
 
 def data_to_tensor(data): 
@@ -630,13 +646,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--test_size', '-t', type=float, default=0.2)
     parser.add_argument('--epochs', '-e', type=int, default=31)
-    parser.add_argument('--learning_rate', '-r', type=float, default=1e-4)
+    parser.add_argument('--learning_rate', '-r', type=float, default=1e-3)
     parser.add_argument('--batch_size', '-b', type=int, default=1)
     parser.add_argument('--load_model', type=bool, default=False)
     # parser.add_argument('--model_path', type=str, default='')
     parser.add_argument('--root_dir', type=str, default='')
     # parser.add_argument('-test_files', '--list', nargs='+', help='<Required> Set flag', required=False)
-    parser.add_argument('-data_files', '--list', nargs='+', help='<Required> Set flag', required=True)
+    parser.add_argument('-train_files', '--list', nargs='+', help='<Required> Set flag', required=True)
     parser.add_argument('--out_dir', type=str, default='')
     parser.add_argument('-sf', '--load_data_and_labels_from_same_folder', action='store_true')
     parser.add_argument('-sd', '--split_data', action='store_true', default=True)
@@ -689,16 +705,13 @@ if __name__ == '__main__':
 
     # augmented = get_rotated_dataset(dataset_tr, 3)
     # augmented = get_occluded_dataset(dataset_tr, 2)
-    # augmented = get_transformed_dataset(dataset_tr, crop_list)
-    augmented = get_new_transformed(dataset_tr, 2)
-    # augmented = dataset_tr
-
     # n = len(augmented)
     # for i in range(n): 
-    #     visualize(augmented[i])
-    #     if i > 10:
+    #     visualize(augmented[i], i)
+    #     if i > 5:
     #         break
-
+    augmented = get_transformed_dataset(dataset_tr, crop_list)
+    # augmented = dataset_tr
     # import ipdb; ipdb.set_trace()
 
     data_tr = data_to_tensor(augmented)
@@ -713,8 +726,6 @@ if __name__ == '__main__':
     loader_t = DataLoader(data_img_test, batch_size=1, shuffle=True)
 
 
-
-    # import ipdb; ipdb.set_trace()
 
     model = create_model(args)
     logging.info('Training.')
@@ -737,4 +748,184 @@ if __name__ == '__main__':
     import ipdb; ipdb.set_trace()
 
 
+    num_sets = len(dataset_names)
+    datasets = []
+    for i in range(num_sets): 
+        dataset = EndEffectorPositionDataset(root_dir=args.root_dir + dataset_names[i],                                       
+                                        load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
+        datasets.append(dataset)
+
+    dataset = ConcatDataset(datasets)
+    dataset = delete_incomplete_data(dataset)
+    dataset = FixIndices(dataset)
+    # dataset = Transform(dataset, RandomBlur(0.5))
+    # dataset = Transform(dataset, transforms.Compose(
+    #                     [
+    #                     RandomBlur(0.5), 
+    #                     ToTensor()
+    #                     ]))
+
+    # for i in range(len(dataset)): 
+    #     visualize(dataset[i], 0)
+    #     if i > 1: 
+    #         import ipdb; ipdb.set_trace()
+
+  
     
+    kfold = 5
+    crop_list = [(200, 400), (300, 400), (300, 300), (400, 400), (400, 300), (400, 200)]
+    crop_list = [(300, 400), (400, 300)]
+    crop_list = []
+
+    # augmented = get_transformed_dataset(dataset, crop_list)
+    # augmented = get_rotated_dataset(dataset, 3)
+    # augmented = dataset
+    augmented = get_occluded_dataset(dataset, 3)
+    mapping = get_index_mapping(dataset, augmented)
+    multi_gpu = True
+
+    n = len(dataset)
+    print('n: ', n)
+    indices = np.array(range(n)).astype(int)
+    np.random.shuffle(indices)
+    len_fold = int(n / kfold)
+
+
+    for i in range(kfold): 
+        print('\n')
+        print('KFOLD: ', i)
+        ind_val = indices[len_fold*i:len_fold*(i+1)]
+        ind_tr = np.append(indices[:len_fold*i], indices[len_fold*(i+1):])
+
+        data_val = Subset(dataset, ind_val)
+        print('# data val: ', len(data_val))
+
+        aug_ind = mapping[ind_tr, :]
+        data_tr = Subset(augmented, aug_ind.astype(int).flatten())
+        print('# data tr: ', len(data_tr))
+
+        plot_img_tr = Subset(data_tr, range(8))
+
+        data_tr = data_to_tensor(data_tr)
+        data_val = data_to_tensor(data_val)
+        data_img_tr = data_to_tensor(plot_img_tr)
+
+        # import ipdb; ipdb.set_trace()
+
+
+        loader_tr = DataLoader(data_tr, batch_size=8,
+                        shuffle=True, num_workers=4)
+        loader_val = DataLoader(data_val, batch_size=1, shuffle=True) 
+        loader_img_tr = DataLoader(data_val, batch_size=1, shuffle=True)
+        loader_t = False
+
+        # loader_img = DataLoader(data_tr, batch_size=1, shuffle=True)
+        
+        model = create_model(args)
+        if multi_gpu:
+            print('multi gpu')
+            model = torch.nn.DataParallel(model, device_ids=range(1))
+        logging.info('Training.')
+
+        path = './logs/' + args.out_dir + '/fold_' + str(i) 
+        print('path: ', path)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        logs = train(model, loader_tr, loader_val, loader_t, loader_img_tr, path, lr=args.learning_rate, epochs=args.epochs, use_cuda=True)
+
+
+        del data_tr
+        del data_val
+        del data_img_tr
+        del model
+    
+    
+    import ipdb; ipdb.set_trace()
+
+    
+
+    # n_val = int(n_test * .5 )  # number of test/val elements
+    # n_test = n_test - n_val
+    # dataset_t, dataset_val = random_split(dataset_test, (n_test, n_val))
+    # print(n_train, n_val, n_test)
+
+
+
+
+    
+    # # crop_list = []
+    # dataset_0 = Transform(dataset_train, transforms.Compose(
+    #                     [
+    #                     Rescale((IMG_HEIGHT, IMG_WIDTH)),
+    #                     ]))
+    # for i in range(len(crop_list)): 
+    #     dataset_cropped = Transform(dataset_train, transforms.Compose(
+    #                     [
+    #                     RandomCrop(crop_list[i]), 
+    #                     ]))
+    #     dataset_0 = ConcatDataset([dataset_0, dataset_cropped])
+
+    # dataset_tr = Transform(dataset_0, transforms.Compose(
+    #                     [
+    #                     RandomVFlip(0.5), 
+    #                     RandomHFlip(0.5), 
+    #                     RandomRot(-30., 30., 0.5), 
+    #                     Rescale((IMG_HEIGHT, IMG_WIDTH)),
+    #                     ToTensor()
+    #                     ]))
+    
+
+    
+    # dataset_t = Transform(dataset_t, transforms.Compose([Rescale((IMG_HEIGHT, IMG_WIDTH)), ToTensor()]))
+    # dataset_val = Transform(dataset_val, transforms.Compose([Rescale((IMG_HEIGHT, IMG_WIDTH)), ToTensor()]))
+    # print('training size: ', len(dataset_tr))
+    # print('validation size: ', len(dataset_val))
+    # print('testing size: ', len(dataset_t))
+    
+
+    
+    # loader_tr = DataLoader(dataset_tr, batch_size=2,
+    #                     shuffle=True, num_workers=4)
+    # loader_val = DataLoader(dataset_val, batch_size=1, shuffle=True) 
+    # loader_t = DataLoader(dataset_t, batch_size=1, shuffle=True) 
+
+
+    # ### Load model
+    # model = create_model(args)
+    # if multi_gpu:
+    #     model = torch.nn.DataParallel(model, device_ids=range(2))
+
+    # # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # # if torch.cuda.device_count() > 1:
+    # #     print("Let's use", torch.cuda.device_count(), "GPUs!")
+    # #     model = nn.DataParallel(model)
+    # # model.to(device)
+    # # import ipdb; ipdb.set_trace()  
+
+    # # import ipdb; ipdb.set_trace()  
+
+    # ### Train
+    # logging.info('Training.')
+    # logs = train(model, loader_tr, loader_val, loader_t, lr=args.learning_rate, epochs=args.epochs)
+    
+    # # TODO save stuff
+
+    # with open(data_path + '/1_logs.pkl', 'wb') as f: 
+    #     pickle.dump(logs, f)
+
+    # dataiter_t = list(iter(loader_t))
+    # l2_error = test(model, dataiter_t)
+    # print('l2 error: ', l2_error)
+
+    # # plot_losses(logs, '1_goodtransform')
+
+    # # save model 
+
+    # torch.save(model.state_dict(), model_path)
+
+
+
+    # # Default into debug mode if training is completed
+    # import ipdb; ipdb.set_trace()
+    # exit()
+
