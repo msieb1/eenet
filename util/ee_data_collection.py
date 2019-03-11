@@ -375,7 +375,11 @@ def collect_n_pictures_parallel(device_ids, num_pics):
       pixel_view_buffer = []
       view_idx = 0
       for img_subs, depth_subs in zip(img_subs_list, depth_subs_list):
-
+        # Store projected endeffector pixels 2 times (x,y,z)
+        pixels = np.zeros((2, 3))
+        p3d_l = finger_listener.get_3d_pose(gripper='l', finger='l', frame="/camera{}_color_optical_frame".format(device_ids[view_idx]))
+        p3d_r = finger_listener.get_3d_pose(gripper='l', finger='r', frame="/camera{}_color_optical_frame".format(device_ids[view_idx]))
+        
         color_image = img_subs.img
         depth_image = depth_subs.img
         depth_image[np.where(depth_image > clipping_distance)] = 0
@@ -388,11 +392,7 @@ def collect_n_pictures_parallel(device_ids, num_pics):
         # Render images
         # depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
 
-        # Store projected endeffector pixels 2 times (x,y,z)
-        pixels = np.zeros((2, 3))
-        p3d_l = finger_listener.get_3d_pose(gripper='l', finger='l', frame="/camera{}_color_optical_frame".format(device_ids[view_idx]))
-        p3d_r = finger_listener.get_3d_pose(gripper='l', finger='r', frame="/camera{}_color_optical_frame".format(device_ids[view_idx]))
-        
+
 
         ### DEBUG
 

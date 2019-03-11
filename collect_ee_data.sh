@@ -16,9 +16,9 @@
 TARGET=$1
 dataset="$TARGET"  # Name of the dataset.
 seqname=$2
-mode=train  # E.g. 'train', 'validation', 'test', 'demo'.
+mode=test  # E.g. 'train', 'validation', 'test', 'demo'.
 num_views=1 # Number of webcams.
-expdir=/media/zhouxian/ed854110-6801-4dcd-9acf-c4f904955d71/imitation_learning
+expdir=/media/zhouxian/ed854110-6801-4dcd-9acf-c4f904955d71/eenet_learning
 viddir=videos # Output directory for the videos.
 depthdir=depth
 tmp_imagedir=/media/zhouxian/ed854110-6801-4dcd-9acf-c4f904955d71/tmp

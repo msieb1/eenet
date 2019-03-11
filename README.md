@@ -27,8 +27,7 @@ Look at parsed arguments within scripts/train_eenet.py for more details.
 python3 scripts/train_eenet.py --root_dir data_storage_path/0_view0 -sf
 
 # example: 
-python3 scripts/train_eenet.py --root_dir 
-/media/zhouxian/ed854110-6801-4dcd-9acf-c4f904955d71/imitation_learning/endeffector4/videos/train/0_view0 -sf
+python3 scripts/train_eenet.py --root-dir /media/zhouxian/ed854110-6801-4dcd-9acf-c4f904955d71/imitation_learning/endeffector4/videos/train/0_view0 -sf
 ```
 
 
@@ -58,6 +57,12 @@ Setting up the ROS environment
 
 7. rosrun image_view image_view image:=/camera2/color/image_raw
 (visualizing the camera image for debugging)
+
+8. cd ~/ros_ws && ./baxter.sh
+
+9. cd ~/git/eenet 
+
+10. run script (see below)
 
 ```
 
@@ -96,10 +101,10 @@ saves images and npy files into /media/zhouxian/ed854110-6801-4dcd-9acf-c4f90495
 ```
 . collect_ee_data.sh folder_name sequence_name num_pictures 
 # example
-. collect_ee_data.sh hand_raw name 20000
+. collect_ee_data.sh eenet_11 0 20000
 ```
 
-This will save into the folder /media/zhouxian/ed854110-6801-4dcd-9acf-c4f904955d71/imitation_learning/hand_raw/name_view0/
+This will save into the folder /media/zhouxian/ed854110-6801-4dcd-9acf-c4f904955d71/imitation_learning/eenet_11/0_view0/
 
 
 

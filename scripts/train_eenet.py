@@ -302,7 +302,7 @@ if __name__ == '__main__':
                                             Rescale((IMG_HEIGHT, IMG_WIDTH)),
                                             # RandomCrop((int(IMG_HEIGHT * 0.8), int(IMG_WIDTH * 0.8))),
                                             ToTensor(),
-                                            RandomChoiceRotateWithLabel([0,10,-10])
+                                            RandomChoiceRotateWithLabel([0,2,-2])
                                             ]),                                        
                                         load_data_and_labels_from_same_folder=args.load_data_and_labels_from_same_folder)
     # Split dataset in training and test set
