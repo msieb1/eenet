@@ -25,13 +25,13 @@ from pdb import set_trace as st
 
 ### Set GPU visibility
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-# os.environ["CUDA_VISIBLE_DEVICES"]= "1, 2"  # Set this for adequate GPU usage
+os.environ["CUDA_VISIBLE_DEVICES"]= "1"  # Set this for adequate GPU usage
 
 ### Set Global Parameters
 _LOSS = nn.NLLLoss
 ROOT_DIR = '/home/msieb/projects/bullet-demonstrations/experiments/reach/data'
-IMG_HEIGHT = 240 # These are the dimensions used as input for the ConvNet architecture, so these are independent of actual image size
-IMG_WIDTH = 320
+IMG_HEIGHT = 224 # These are the dimensions used as input for the ConvNet architecture, so these are independent of actual image size
+IMG_WIDTH = 224
 
 ### Helper functions
 def apply(func, M):
@@ -256,7 +256,7 @@ def create_model(args, use_cuda=True):
         contains EENet model
     """
 
-    model = define_model(IMG_HEIGHT, IMG_WIDTH, use_cuda)
+    model = define_model(IMG_HEIGHT, IMG_WIDTH)
     # tcn = PosNet()
     if args.model_path != '':
         model_path = os.path.join(
@@ -279,7 +279,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_size', '-t', type=float, default=0.2)
     parser.add_argument('--epochs', '-e', type=int, default=100)
     parser.add_argument('--learning_rate', '-r', type=float, default=1e-4)
-    parser.add_argument('--batch-size', '-b', type=int, default=1)
+    parser.add_argument('--batch-size', '-b', type=int, default=4)
     parser.add_argument('--model-path', type=str, default='')
     parser.add_argument('--root-dir', type=str, default=ROOT_DIR)
     parser.add_argument('--model-folder', type=str, default='./trained_models')
