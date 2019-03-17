@@ -114,7 +114,7 @@ class RandomSquare(object):
             center_h = np.random.randint(0, h)
             center_w = np.random.randint(0, w)
 
-            width = int(np.random.randint(0, h/2) / 2)
+            width = int(np.random.randint(0, int(h/3.)) / 2.)
             # print(center_w, center_h, width)
             # import ipdb; ipdb.set_trace()
 
@@ -127,25 +127,29 @@ class RandomSquare(object):
             y_low = max(0, y_low)
             x_high = min(x_high, h)
             y_high = min(y_high, w)
-            new[x_low:x_high, y_low:y_high, :] = 0
+            colors = np.random.uniform(0., 1., 3)
+            for j in range(3): 
+                new[x_low:x_high, y_low:y_high, j] = colors[j]
 
         return {'image': new, 'label': labels}
 
 class RandomVLines(object): 
-    def __init__(self, max_num = 4):
+    def __init__(self, p, max_num = 4):
         self.max_num = max_num
+        self.p = p
     def __call__(self, sample):
         image, labels = sample['image'], sample['label']
         h, w = image.shape[:2]
         num = np.random.randint(0, self.max_num)
         total_mask = np.ones([h, w, 3])
+        new = image
         for i in range(num): 
             mask = np.zeros([h, w, 3])
 
             center_h = np.random.randint(0, h)
             center_w = np.random.randint(0, w)
 
-            width = int(np.random.randint(5, int(w/20.)) / 2)
+            width = int(np.random.randint(10, int(w/20.)) / 2)
             height = int(np.random.randint(int(h/10.), int(h/2.)) / 2) 
             # print(center_w, center_h, width)
             # import ipdb; ipdb.set_trace()
@@ -163,9 +167,30 @@ class RandomVLines(object):
             mask[x_low:x_high, y_low:y_high, :] = 1
             theta = np.random.uniform(-30, 30)
             mask = transform.rotate(mask, theta, resize=False, order=0, preserve_range=True)
-            mask = np.abs((1 - mask))
-            total_mask = np.multiply(total_mask, mask)
-        new = np.multiply(total_mask, image)
+            
+            # boolean = mask == 1
+
+            if np.random.uniform(0., 1.) < self.p: 
+                colors = np.random.uniform(0., 1., 3)
+                for j in range(3): 
+
+                    temp = np.where(mask[:, :, j] == 1)
+                    k = len(temp)
+                    indices = list(zip(temp[0], temp[1]))
+
+                    for ind in indices: 
+                        new[ind[0], ind[1], j] = colors[j]
+            else: 
+                for j in range(3): 
+                    temp = np.where(mask[:, :, j] == 1)
+                    indices = list(zip(temp[0], temp[1]))
+                    for ind in indices: 
+                        new[ind[0], ind[1]] = 0
+
+                
+            # mask = np.abs((1 - mask))
+            # total_mask = np.multiply(total_mask, mask)
+        # new = np.multiply(total_mask, image)
         return {'image': new, 'label': labels}
 
 
@@ -182,25 +207,27 @@ class RandomBlur(object):
         l2 = np.where(labels[:, :, 1] == 1)
 
         distance = np.sqrt((l1[0][0] - l2[0][0])**2 + (l1[1][0] - l2[1][0])**2)
-        width = int(np.random.uniform(0, distance))
+        width = int(np.random.uniform(0, distance) / 2.) 
 
         blurred = image
         if np.random.random() < self.p:
-            x_low = l1[0][0] - width
-            x_high = l1[0][0] + width
-            y_low = l1[1][0] - width
-            y_high = l1[1][0] + width
+            colors = np.random.uniform(0., 1., 3)
+            if np.random.random() < 0.5: 
+                x_low = l1[0][0] - width
+                x_high = l1[0][0] + width
+                y_low = l1[1][0] - width
+                y_high = l1[1][0] + width
 
-        else: 
-            x_low = l2[0][0] - width
-            x_high = l2[0][0] + width
-            y_low = l2[1][0] - width
-            y_high = l2[1][0] + width
-        x_low = max(0, x_low)
-        y_low = max(0, y_low)
-        x_high = min(x_high, w)
-        y_high = min(y_high, h)
-        blurred[x_low:x_high, y_low:y_high, :] = 0
+            else: 
+                x_low = l2[0][0] - width
+                x_high = l2[0][0] + width
+                y_low = l2[1][0] - width
+                y_high = l2[1][0] + width
+            x_low = max(0, x_low)
+            y_low = max(0, y_low)
+            x_high = min(x_high, w)
+            y_high = min(y_high, h)
+            blurred[x_low:x_high, y_low:y_high, :] = colors
         #np.mean(image[x_low:x_high, y_low:y_high, :], axis=(0, 1))
         return {'image': blurred, 'label': labels}
 
@@ -263,20 +290,55 @@ class RandomScaledCrop(object):
         scale_limit = max(h_range / h, w_range / w)
         min_scale = max(self.min_scale, scale_limit)
 
-        scale = np.random.uniform(min_scale + 0.05, self.max_scale)
-        ratio = np.random.uniform(self.min_ar, self.max_ar)
+        min_ratio = h_range / w_range
+        min_ratio = min(min_ratio, self.min_ar)
+
+        scale = np.random.uniform(min_scale, self.max_scale)
+        ratio = np.random.uniform(min_ratio, self.max_ar)
         
-        new_w = int(scale * w)
-        new_h = int(new_w * ratio)
+        new_w = int(scale * w) 
+        new_h = max(int(new_w * ratio), h_range) 
 
         new_w = min(w, new_w)
         new_h = min(h, new_h)
 
+
+
         # print(scale, ratio, new_w, new_h)
+        # print(scale, ratio)
 
         
         # import ipdb; ipdb.set_trace()
 
+        # mid_h = int(points[1][0] + h_range/2.)
+        # mid_w = int(points[1][1] + w_range/2.)
+
+       
+
+
+        # if new_h == h: 
+        #     crop_h = 0
+        # else:
+        #     crop_h = np.random.randint(0, min(h - new_h, new_h - h_range) + 1)
+        
+        # if new_w == w: 
+        #     crop_w = 0
+        # else: 
+        #     crop_w = np.random.randint(0, min(w - new_w, new_w - w_range) + 1)
+    
+        # cut_h = max(0, points[0][1] - crop_h)
+        # cut_w = max(0, points[0][0] - crop_w)
+
+        # print(h, new_h, h_range, cut_h)
+        # print(w, new_w, w_range, cut_w)
+        # print('\n')
+
+        # # print(cut_h, cut_w)
+
+        # cropped = image[cut_h:cut_h + new_h, cut_w:cut_w + new_w, :]
+        # labels_cropped = labels[cut_h:cut_h + new_h, cut_w:cut_w + new_w, :]
+        
+        counter = 0
 
         while True: 
             if new_h == h: 
@@ -294,9 +356,13 @@ class RandomScaledCrop(object):
             cropped = image[crop_h:crop_h+new_h, crop_w:crop_w+new_w, :]
 
             labels_cropped = labels[crop_h:crop_h+new_h, crop_w:crop_w+new_w, :]
-            if np.sum(labels_cropped) >= np.sum(labels): 
-                break
-        return {'image': cropped, 'label': labels_cropped}
+            counter += 1
+            if (np.sum(labels_cropped) >= np.sum(labels)): 
+                return {'image': cropped, 'label': labels_cropped}
+            elif counter > 640: 
+                return {'image': image, 'label': labels}
+        return {'image': image, 'label': labels}
+        
 
 class RandomVFlip(object): 
     def __init__(self, p):
