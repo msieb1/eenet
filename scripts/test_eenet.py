@@ -11,11 +11,11 @@ from tensorboardX import SummaryWriter
 
 
 import ipdb; ipdb.set_trace()
-from models.eenet import define_model
+from models.eenet_skip import define_model
 from util.transforms import Rescale, ToTensor 
 
-IMG_HEIGHT = 240 # These are the dimensions used as input for the ConvNet architecture, so these are independent of actual image size
-IMG_WIDTH = 320
+IMG_HEIGHT = 224 # These are the dimensions used as input for the ConvNet architecture, so these are independent of actual image size
+IMG_WIDTH = 224
 
 def apply(func, M):
     """Applies a function over a batch (PyTorch as of now has no support for arbitrary function calls on batches)
@@ -41,7 +41,7 @@ def create_model(args, use_cuda=True):
         contains EENet model
     """
 
-    model = define_model(IMG_HEIGHT, IMG_WIDTH, use_cuda)
+    model = define_model(IMG_HEIGHT, IMG_WIDTH)
     # tcn = PosNet()
     if args.model_path != '':
         model_path = os.path.join(
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     ### Load model
-    print(args.model_path)
+    print('model loaded from: ', args.model_path)
     model = create_model(args)
     
     #path = '/media/zhouxian/ed854110-6801-4dcd-9acf-c4f904955d71/gps_runs/bottle_in_mug/videos/train/success_2_view0.mp4'
