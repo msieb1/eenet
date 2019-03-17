@@ -187,7 +187,6 @@ def l2_distance(pred, label):
     label_l = np.where(yb_l == 1)[1:]
     label_r = np.where(yb_r == 1)[1:]
 
-
     pred_point = np.asarray([[np.mean(pred_label_l[0]), np.mean([pred_label_l[1]])], [np.mean(pred_label_r[0]), np.mean([pred_label_r[1]])]]).astype(int)
     label_point = np.asarray([[label_l[0][0], label_l[1][0]], [label_r[0][0], label_r[1][0]]])
 
@@ -267,6 +266,7 @@ def train(model, loader_tr, loader_val, loader_t, loader_img_tr, path, out_dir, 
         loss_tr = 0
         acc_tr = 0
         for sample in t_batches:
+            xb = sample['image']
             yb = sample['label']
             if use_cuda:
                 xb = xb.cuda()
@@ -387,12 +387,12 @@ def create_model(args, use_cuda=True):
 
     model = define_model(IMG_HEIGHT, IMG_WIDTH)
     # tcn = PosNet()
-    if args.load_model:
-        model_path = os.path.join(
-            args.model_path,
-        )
+    if args.load_model != '':
+        # model_path = os.path.join(
+        #     args.model_path,
+        # )
         # map_location allows us to load models trained on cuda to cpu.
-        model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
+        model.load_state_dict(torch.load(args.load_model, map_location=lambda storage, loc: storage))
 
     if use_cuda:
         model = model.cuda()
@@ -513,7 +513,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', '-e', type=int, default=20)
     parser.add_argument('--learning_rate', '-r', type=float, default=1e-4)
     parser.add_argument('--batch_size', '-b', type=int, default=1)
-    parser.add_argument('--load_model', type=bool, default=False)
+    parser.add_argument('--load_model', type=str, default='')
     parser.add_argument('--root_dir', type=str, default='')
     parser.add_argument('--tr', '--list', nargs='+', help='<Required> list of training files', required=True)
     parser.add_argument('--v', type=str,  help='<Required> Set flag', required=True)
